@@ -1,0 +1,299 @@
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #142438;
+  background: #eef3f7;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+}
+
+button {
+  min-height: 2.5rem;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid #485d73;
+  border-radius: 0.35rem;
+  color: inherit;
+  background: #fff;
+  font: inherit;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+button:hover:not(:disabled) {
+  background: #e3edf6;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+button:focus-visible {
+  outline: 3px solid #b23811;
+  outline-offset: 2px;
+  z-index: 1;
+}
+
+.app-shell {
+  width: min(100%, 76rem);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: clamp(0.75rem, 3vw, 2rem);
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.2;
+}
+
+h1 {
+  margin-top: 0;
+  font-size: clamp(1.8rem, 5vw, 2.5rem);
+}
+
+.rules-list {
+  padding-left: 1.3rem;
+}
+
+.fleet-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.fleet-list button {
+  width: 100%;
+  text-align: left;
+}
+
+.fleet-list button[aria-pressed="true"] {
+  border-width: 2px;
+  border-color: #0e4b79;
+  background: #d8eafa;
+  font-weight: 700;
+}
+
+.setup-controls,
+.new-game-controls,
+.confirmation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 0.75rem 0 1.25rem;
+}
+
+.confirmation {
+  padding: 0.75rem;
+  border: 2px solid #485d73;
+  border-radius: 0.4rem;
+  background: #fff;
+}
+
+.confirmation p {
+  width: 100%;
+  margin: 0;
+  font-weight: 700;
+}
+
+.board-scroll {
+  width: 100%;
+  overflow-x: auto;
+  padding: 0.15rem;
+}
+
+.board-grid {
+  display: grid;
+  width: 100%;
+  max-width: 40rem;
+  grid-template-columns: 1.75rem repeat(10, minmax(24px, 1fr));
+  column-gap: 1px;
+  row-gap: 1px;
+  touch-action: manipulation;
+}
+
+.board-row {
+  display: contents;
+}
+
+.board-header,
+.board-cell {
+  display: flex;
+  min-width: 24px;
+  min-height: 24px;
+  align-items: center;
+  justify-content: center;
+}
+
+.board-header {
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.board-cell {
+  position: relative;
+  width: 100%;
+  min-height: 24px;
+  padding: 0;
+  border: 1px solid #718096;
+  border-radius: 0;
+  background: #fff;
+  font-size: clamp(0.7rem, 3.5vw, 1.15rem);
+  line-height: 1;
+}
+
+.board-cell.state-ship {
+  background: #798da0;
+  color: #101b27;
+  font-weight: 900;
+}
+
+.board-cell.state-miss {
+  background: #dceafa;
+  color: #143963;
+  font-weight: 800;
+}
+
+.board-cell.state-hit {
+  background: #ffe0d9;
+  color: #871b08;
+  font-weight: 900;
+}
+
+.board-cell.state-sunk {
+  border: 2px solid #172331;
+  background: repeating-linear-gradient(135deg, #e1e6eb 0 4px, #b8c2cc 4px 8px);
+  color: #101820;
+  font-weight: 900;
+}
+
+.board-cell.state-unhit-ship {
+  border: 2px dashed #5d4010;
+  background: #fff4c9;
+  color: #44320a;
+  font-weight: 800;
+}
+
+.board-cell.preview-valid {
+  outline: 2px solid #13723d;
+  outline-offset: -2px;
+}
+
+.board-cell.preview-invalid {
+  outline: 2px solid #a12617;
+  outline-offset: -2px;
+  background-color: #ffe0d9;
+}
+
+.preview-message {
+  min-height: 1.5em;
+  font-weight: 650;
+}
+
+.error-message {
+  color: #8c1c0c;
+  font-weight: 700;
+}
+
+.boards-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.5rem;
+  margin: 1rem 0 1.5rem;
+}
+
+.battle-board {
+  min-width: 0;
+}
+
+.status-panel {
+  padding: 0.75rem 1rem;
+  border: 1px solid #9aaaba;
+  border-radius: 0.5rem;
+  background: #fff;
+}
+
+.status-panel h2 {
+  margin-top: 0.2rem;
+}
+
+.status-panel p {
+  margin: 0.45rem 0;
+}
+
+.turn-status,
+.game-result {
+  font-weight: 800;
+}
+
+.legend {
+  margin: 1rem 0;
+}
+
+.legend h3 {
+  margin-bottom: 0.5rem;
+}
+
+.legend ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.legend-symbol {
+  display: inline-flex;
+  min-width: 2.5rem;
+  min-height: 1.8rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #8291a0;
+  background: #fff;
+  font-weight: 800;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+@media (min-width: 54rem) {
+  .boards-layout {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+    animation: none !important;
+  }
+}
