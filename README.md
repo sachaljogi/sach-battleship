@@ -44,7 +44,7 @@ npm run build
 npm run preview -- --port 4173 --strictPort
 ```
 
-The Vite base path is `/sach-battleship/`, so the preview URL is <http://localhost:4173/sach-battleship/>.
+The Vite base path is `/sach-battleship/`. While `npm run preview` is running on your own machine, open `http://localhost:4173/sach-battleship/` in your browser. This address works only on that machine; to play online, use the [live site](https://sachaljogi.github.io/sach-battleship/).
 
 ## Project structure
 
