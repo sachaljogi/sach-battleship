@@ -59,3 +59,11 @@ No real defects encountered as of 2026-10-05T23:55:42Z UTC.
 - Cause: `body { min-width: 320px }` exceeded the document's available client width.
 - Fix: remove the body minimum width and let the board's own scroll container handle any constrained content.
 - Covering test: `e2e/smoke.spec.ts` asserts document width does not exceed client width at 320px.
+
+## 2026-10-06T00:35:32Z — Browser asset assertion required a response-map entry
+
+- Symptom: the Playwright asset assertion timed out with an undefined status while the production setup screen had loaded.
+- Expected: every linked script and stylesheet asset should resolve under the Pages base path and return HTTP 200.
+- Cause: the assertion treated a missing exact URL entry in the browser response map as a failed response.
+- Fix: request an asset directly when the page response map has no matching entry, then assert its status.
+- Covering test: `e2e/smoke.spec.ts` checks every asset URL and status.

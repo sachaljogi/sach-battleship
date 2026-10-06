@@ -23,7 +23,8 @@ test('production app supports a complete smoke flow under its Pages base path', 
   expect(assetUrls.length).toBeGreaterThan(0)
   for (const assetUrl of assetUrls) {
     expect(new URL(assetUrl).pathname).toMatch(/^\/sach-battleship\//)
-    await expect.poll(() => responseStatuses.get(assetUrl)).toBe(200)
+    const responseStatus = responseStatuses.get(assetUrl) ?? (await page.request.get(assetUrl)).status()
+    expect(responseStatus, assetUrl).toBe(200)
   }
 
   await page.getByRole('button', { name: 'Randomize' }).click()
