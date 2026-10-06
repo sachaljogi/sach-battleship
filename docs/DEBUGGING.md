@@ -89,7 +89,21 @@ This page records defects encountered while building the game. It does not claim
 
 ## Deployed-site check
 
-_Pending — to be completed after deployment._
+Checked 2026-10-06 (UTC) against https://sachaljogi.github.io/sach-battleship/, deployed by the "Deploy to GitHub Pages" workflow run for commit `27f749b` (application code identical to the tested revision above). CI run 1 (typecheck, lint, unit tests, build, Playwright e2e) also passed on GitHub Actions for that commit.
+
+- Fresh, unauthenticated contexts: a newly launched headless Chromium (no cookies or profile) and a Chrome Incognito window. The page returned HTTP 200 with no login prompt; every response was below 400 and no console errors were logged.
+- Full match: one complete match driven through the real UI in headless Chromium by a script that clicked untried enemy cells. It ended after 58 player shots and 58 AI shots ("The AI wins."). All 17 of the player's ship cells were sunk, and the enemy's remaining ships showed as revealed unhit cells. A click on the enemy board after game over changed nothing.
+- Play again returned a clean setup: no ships placed and Start disabled. A second match then started, and the AI replied to its first shot.
+- Page refresh at `/sach-battleship/` reloaded the setup screen in both contexts.
+- At 320px width, the document `scrollWidth` equalled `clientWidth` (no page-level horizontal scroll).
+- By hand in Chrome Incognito:
+  - placed the Carrier manually;
+  - tried an out-of-bounds Battleship and saw the preview and error message, with the Carrier kept;
+  - used Randomize and Start;
+  - double-clicked an enemy cell and then clicked another during "AI is thinking...", which produced exactly one player shot and one AI reply;
+  - fired with Enter and with Space after moving with an arrow key; the focus outline was visible;
+  - refreshed the page.
+- Not checked on the deployed site: a player win (it is covered by the component test "winning shot gets no reply"), real phones, browsers other than Chromium/Chrome, and screen readers.
 
 ## Limitations
 
