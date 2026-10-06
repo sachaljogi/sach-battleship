@@ -1,2 +1,77 @@
-# sach-battleship
-Browser based battleship game to play against an AI opponent 
+[Live game](https://sachaljogi.github.io/sach-battleship/) · [Debugging guide](docs/DEBUGGING.md) · [Architecture guide](docs/ARCHITECTURE.md)
+
+# Battleship
+
+A browser Battleship game for one human player against an AI opponent.
+
+## Rules
+
+Place all five ships on your 10×10 fleet board. Ships may touch, but cannot overlap or extend beyond the board. Then take turns firing one shot at a time: a hit does not grant an extra turn. Sink all five enemy ships before the AI sinks yours.
+
+## Requirements
+
+- Node.js 24, as selected by `.nvmrc`
+- npm
+
+## Run locally
+
+```sh
+npm ci
+npm run dev
+```
+
+Vite prints the local URL when the server starts.
+
+## Tests and code checks
+
+```sh
+npm test
+npm run typecheck
+npm run lint
+```
+
+The browser smoke test runs against a production build in Chromium:
+
+```sh
+npx playwright install --with-deps chromium
+npm run test:e2e
+```
+
+## Build and preview
+
+```sh
+npm run build
+npm run preview -- --port 4173 --strictPort
+```
+
+The Vite base path is `/sach-battleship/`, so the preview URL is <http://localhost:4173/sach-battleship/>.
+
+## Project structure
+
+- `src/game/` — deterministic placement, shots, AI, and reducer
+- `src/hooks/` — React game state and delayed AI turn
+- `src/components/` — accessible setup, board, and battle screens
+- `src/ui/` — user-facing cell and status messages
+- `src/**/__tests__/` — engine, reducer, and component tests
+- `e2e/` — Playwright browser smoke test
+- `docs/` — architecture, debugging, and development notes
+
+## How the AI works
+
+The AI hunts on a checkerboard while those cells remain, then considers any untried cell. After a hit it targets orthogonal neighbors; aligned hits guide it toward the ends of that line. It continues pursuing unresolved hits even if a different ship has already sunk. The AI receives only the public `AiView`—shot outcomes and information about ships already sunk—not the hidden fleet layout.
+
+## Deployment
+
+GitHub Actions runs typecheck, lint, unit tests, build, and a Chromium smoke test. A separate workflow publishes the production build to GitHub Pages when `main` is updated.
+
+## Known limitations
+
+- Games are not saved; refreshing the page returns to fleet setup.
+- The game is single-player against the AI; there is no online multiplayer.
+- The AI uses a hunt-and-target heuristic, not probability-density search.
+- Board cells remain at least 24px wide; at very narrow widths they may be about 24–25px and the board can scroll within its own container.
+- Manual screen-reader testing has not been performed.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
