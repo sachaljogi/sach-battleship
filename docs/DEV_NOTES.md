@@ -43,3 +43,19 @@ No real defects encountered as of 2026-10-05T23:55:42Z UTC.
 - Cause: `playerCellViews` read only from `playerBoard`, which is populated at game start rather than during setup.
 - Fix: derive the player's public cells from `setup.ships` while the game is in setup.
 - Covering check: `npm test`.
+
+## 2026-10-06T00:29:04Z — Missing favicon on the deployed path
+
+- Symptom: the browser reported a 404 while loading the app because there was no favicon.
+- Expected: the favicon loads from `/sach-battleship/favicon.svg`.
+- Cause: the HTML did not link a favicon and the project had no favicon asset.
+- Fix: add `public/favicon.svg` and link it from `index.html`; Vite prefixes the absolute asset path with the configured base during build.
+- Covering test: `e2e/smoke.spec.ts` checks linked asset responses, base paths, and browser console errors.
+
+## 2026-10-06T00:29:04Z — Horizontal page overflow at 320px
+
+- Symptom: at a 320px viewport with a vertical scrollbar, `documentElement.scrollWidth` was 320 while `clientWidth` was 305.
+- Expected: the page itself should not scroll horizontally at narrow viewport widths.
+- Cause: `body { min-width: 320px }` exceeded the document's available client width.
+- Fix: remove the body minimum width and let the board's own scroll container handle any constrained content.
+- Covering test: `e2e/smoke.spec.ts` asserts document width does not exceed client width at 320px.
