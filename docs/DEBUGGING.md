@@ -68,18 +68,24 @@ This page records defects encountered while building the game. It does not claim
 - **Fix:** Remove the body minimum width and let the board's own container manage constrained content.
 - **Verification:** `e2e/smoke.spec.ts` checks that `scrollWidth <= clientWidth` at 320px.
 
+### Browser asset assertion required a response-map entry
+
+- **Symptom:** The Playwright asset check timed out with an undefined status while the production setup screen had loaded.
+- **Expected behavior:** Every linked script and stylesheet asset should resolve under the Pages base path and return HTTP 200.
+- **Cause:** The assertion treated a missing exact URL entry in the browser response map as a failed response.
+- **Fix:** Request an asset directly when the browser response map has no matching entry, then assert its status.
+- **Verification:** The passing `e2e/smoke.spec.ts` checks every asset URL and status.
+
 ## Verification summary
 
-The summary below will be filled after the Phase 3 checks run.
-
-- `npm run typecheck` — pending
-- `npm run lint` — pending
-- `npm test` — pending
-- `npm run build` — pending
-- `npm run test:e2e` — pending
-- `npm audit` — pending
-- Date: pending
-- Tested revision: pending (code commit; documentation-only commits may follow)
+- `npm run typecheck` — passed.
+- `npm run lint` — passed.
+- `npm test` — passed: 7 files, 49 tests.
+- `npm run build` — passed; `dist/index.html` contains `/sach-battleship/favicon.svg`.
+- `npm run test:e2e` — passed: 1 Chromium test. The initial run exposed an asset-response assertion gap; the assertion was fixed and the test passed on rerun.
+- `npm audit` — passed: 0 vulnerabilities.
+- Date: 2026-10-06 (UTC).
+- Tested revision: `21755a49ca1b328cd716b71a568791406586508e` (application code and tests; documentation and workflow-only commits followed).
 
 ## Deployed-site check
 
