@@ -39,6 +39,7 @@ export type Action =
   | { type: 'playerFire'; coord: Coord }
   | { type: 'aiFire'; coord: Coord; matchId: number; turnId: number }
   | { type: 'playAgain' }
+  | { type: 'newGame' }
 
 export interface CellView {
   state: 'untried' | 'miss' | 'hit' | 'sunk' | 'unhit-ship'
@@ -182,6 +183,9 @@ export function gameReducer(state: GameState, action: Action): GameState {
       }
     }
     case 'playAgain':
+      return state.phase === 'gameOver' ? createInitialState(state.matchId + 1) : state
+    case 'newGame':
+      if (state.phase !== 'playerTurn' && state.phase !== 'aiTurn' && state.phase !== 'gameOver') return state
       return createInitialState(state.matchId + 1)
     default:
       return state
@@ -215,18 +219,25 @@ export function scheduledAiTurn(state: GameState): { matchId: number; turnId: nu
 
 function cellViews(state: GameState, board: Board, revealShips: boolean): CellView[][] {
   const shots = new Map(board.shots.map((shot) => [coordKey(shot.coord), shot]))
-  const sunkCells = new Set(sunkShipIds(board).flatMap((id) => {
+  const sunkShipNames = new Map(sunkShipIds(board).flatMap((id) => {
     const ship = board.ships.find((candidate) => candidate.id === id)
-    return ship ? shipCells(ship).map(coordKey) : []
+    const name = FLEET.find((spec) => spec.id === id)?.name
+    return ship && name ? shipCells(ship).map((coord) => [coordKey(coord), name] as const) : []
   }))
   return allCoords(BOARD_SIZE).reduce<CellView[][]>((rows, coord) => {
     const row = rows[coord.row] ?? []
     const shot = shots.get(coordKey(coord))
+    const sunkShipName = sunkShipNames.get(coordKey(coord))
     if (shot?.outcome === 'miss') row.push({ state: 'miss' })
-    else if (sunkCells.has(coordKey(coord))) row.push({ state: 'sunk' })
+    else if (sunkShipName) row.push({ state: 'sunk', shipName: sunkShipName })
     else if (shot) row.push({ state: 'hit' })
-    else if (revealShips && state.phase === 'gameOver' && shipAtCell(board, coord)) row.push({ state: 'unhit-ship' })
-    else row.push({ state: 'untried' })
+    else if (revealShips && state.phase === 'gameOver') {
+      const ship = shipAtCell(board, coord)
+      const shipName = ship && FLEET.find((spec) => spec.id === ship.id)?.name
+      row.push(ship
+        ? { state: 'unhit-ship', ...(shipName ? { shipName } : {}) }
+        : { state: 'untried' })
+    } else row.push({ state: 'untried' })
     rows[coord.row] = row
     return rows
   }, [])
@@ -241,11 +252,19 @@ export function enemyCellViews(state: GameState): CellView[][] {
 }
 
 export function playerCellViews(state: GameState): PlayerCellView[][] {
-  const base = cellViews(state, state.playerBoard, false)
+  const board: Board = state.phase === 'setup'
+    ? { ships: state.setup.ships, shots: [] }
+    : state.playerBoard
+  const base = cellViews(state, board, false)
   return base.map((row, rowIndex) => row.map((cell, colIndex) => {
-    if (cell.state !== 'untried') return cell
     const coord = { row: rowIndex, col: colIndex }
-    const ship = shipAtCell(state.playerBoard, coord)
+    if (cell.state === 'hit' || cell.state === 'sunk') {
+      const ship = shipAtCell(board, coord)
+      const shipName = ship && FLEET.find((spec) => spec.id === ship.id)?.name
+      return { ...cell, ...(shipName ? { shipName } : {}) }
+    }
+    if (cell.state !== 'untried') return cell
+    const ship = shipAtCell(board, coord)
     if (!ship) return cell
     const name = FLEET.find((spec) => spec.id === ship.id)?.name
     return { state: 'ship', ...(name ? { shipName: name } : {}) }

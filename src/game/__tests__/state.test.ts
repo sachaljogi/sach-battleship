@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { allCoords, coordKey } from '../coordinates'
+import { allCoords, coordKey, BOARD_SIZE } from '../coordinates'
 import { chooseAiShot } from '../ai'
 import { createRng, pick } from '../rng'
 import { isCompleteValidFleet, shipCells } from '../placement'
+import { FLEET } from '../types'
 import {
   aiViewFromBoard,
   createInitialState,
@@ -148,10 +149,36 @@ describe('game reducer', () => {
     expect(cleared.setup.error).toBeNull()
   })
 
-  it('playAgain returns a clean setup state and increments the match id', () => {
+  it('allows newGame during a match but rejects it during setup', () => {
+    const setup = createInitialState()
+    expect(gameReducer(setup, { type: 'newGame' })).toBe(setup)
+
     const playing = startGame()
-    const again = gameReducer(playing, { type: 'playAgain' })
-    expect(again).toEqual(createInitialState(playing.matchId + 1))
+    const duringPlayerTurn = gameReducer(playing, { type: 'newGame' })
+    expect(duringPlayerTurn).toEqual(createInitialState(playing.matchId + 1))
+
+    const aiTurn = gameReducer(playing, { type: 'playerFire', coord: { row: 0, col: 0 } })
+    expect(gameReducer(aiTurn, { type: 'newGame' })).toEqual(createInitialState(aiTurn.matchId + 1))
+
+    const prepared = winningPlayerTurn(playing)
+    const gameOver = gameReducer(prepared.state, { type: 'playerFire', coord: prepared.finalCoord })
+    expect(gameOver.phase).toBe('gameOver')
+    expect(gameReducer(gameOver, { type: 'newGame' })).toEqual(createInitialState(gameOver.matchId + 1))
+  })
+
+  it('restricts playAgain to gameOver and returns a clean setup state', () => {
+    const setup = createInitialState()
+    expect(gameReducer(setup, { type: 'playAgain' })).toBe(setup)
+
+    const playing = startGame()
+    expect(gameReducer(playing, { type: 'playAgain' })).toBe(playing)
+    const aiTurn = gameReducer(playing, { type: 'playerFire', coord: { row: 0, col: 0 } })
+    expect(gameReducer(aiTurn, { type: 'playAgain' })).toBe(aiTurn)
+
+    const prepared = winningPlayerTurn(playing)
+    const gameOver = gameReducer(prepared.state, { type: 'playerFire', coord: prepared.finalCoord })
+    const again = gameReducer(gameOver, { type: 'playAgain' })
+    expect(again).toEqual(createInitialState(gameOver.matchId + 1))
     expect(again.phase).toBe('setup')
     expect(again.turnId).toBe(0)
     expect(again.setup.ships).toEqual([])
@@ -185,9 +212,12 @@ describe('game reducer', () => {
     expect(enemyCellViews(playing).flat().some((cell) => cell.state === 'unhit-ship')).toBe(false)
     const over = { ...playing, phase: 'gameOver' as const, winner: 'ai' as const }
     const revealed = enemyCellViews(over).flat()
-    expect(revealed.some((cell) => cell.state === 'unhit-ship')).toBe(true)
-    expect(revealed.filter((cell) => cell.state === 'unhit-ship').every((cell) => cell.shipName === undefined))
-      .toBe(true)
+    const unhitShips = revealed.filter((cell) => cell.state === 'unhit-ship')
+    const shipCellCount = FLEET.reduce((total, ship) => total + ship.length, 0)
+    expect(unhitShips).toHaveLength(shipCellCount)
+    expect(unhitShips.every((cell) => typeof cell.shipName === 'string')).toBe(true)
+    expect(revealed.filter((cell) => cell.state === 'untried'))
+      .toHaveLength(BOARD_SIZE ** 2 - shipCellCount)
   })
 })
 
