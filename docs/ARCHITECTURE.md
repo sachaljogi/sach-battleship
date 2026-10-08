@@ -32,6 +32,8 @@ Because the computer sees only this public information, it has no advantage from
 
 The pause before the computer fires lets the screen show that it is thinking. That delayed move carries the number of the game and the number of the turn for which it was planned. Think of it as a letter postmarked with both numbers: if the game has restarted or moved on, the referee throws the old letter away instead of applying it.
 
+If the computer's planned shot turns out to be unusable (for example a square that was already fired on, or no square at all), the referee does not ignore it. Instead it fires at the first untried square on your board, so the game never waits forever on "AI is thinking...". In development builds a warning is printed to the browser console when this happens.
+
 When a game resets, the screen leaves the computer's turn, or the screen closes, the waiting move is cancelled. The referee still checks the game and turn numbers when a move arrives, as a second safeguard in case cancellation was too late. In development, a safety check sets up and cleans up the screen's delayed work twice; cancelling the first wait ensures only one computer move is scheduled.
 
 ## Terms used in the code
