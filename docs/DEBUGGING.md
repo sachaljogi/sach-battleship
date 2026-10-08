@@ -92,6 +92,14 @@ This page records defects encountered while building the game. It does not claim
 - **Fix:** The referee now treats a rejected or missing computer shot as "fire at the first untried square" (deterministic, no randomness inside the reducer); if no untried square remains it hands the turn back to the player. `randomInt` clamps every result into range, so bad random numbers cannot produce holes in `shuffle` or an `undefined` pick. In development builds the referee logs a `console.warn` whenever a computer shot is rejected so the fallback is visible.
 - **Verification:** Reducer tests for repeated, out-of-bounds, and missing AI shots; rng tests for `() => 1` and `() => NaN`; component tests that render `<App rng={() => 1} />` and `<App rng={() => NaN} />` and check that "AI is thinking..." clears after the delay. `npm test`.
 
+### Setup placement preview stuck to the clicked cell
+
+- **Symptom:** After clicking a cell to place a ship and moving the mouse off the board, the preview stayed anchored to the clicked cell and showed the next ship in red as "doesn't fit — overlaps …" in Chromium and Firefox, but not in Safari.
+- **Expected behavior:** Leaving the board clears the preview unless the player is navigating with the keyboard, and a successful placement never leaves an invalid preview behind.
+- **Cause:** Chromium and Firefox focus a button when it is clicked; Safari does not. The board's mouse-leave handler fell back to the focused cell, so the click's focus kept the preview alive. The four handlers also read hover and focus values from the render closure, so a focus change and a mouse-leave in the same tick could restore a stale anchor.
+- **Fix:** Derive one preview anchor from state (`hoveredCoord`, else the focused cell only when focus arrived by keyboard) and send it to the parent from a single effect. Activating a cell clears the preview until the next real hover or keyboard move.
+- **Verification:** `npm test` (App component test covering hover, click, unhover, arrow keys, Enter and Tab) and `e2e/setup-preview.spec.ts` in headless Chromium.
+
 ## Verification summary
 
 - `npm run typecheck` — passed.

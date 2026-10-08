@@ -108,6 +108,67 @@ describe('Battleship screens', () => {
     expect(screen.getByRole('gridcell', { name: 'Your fleet, A1, Carrier' })).toBeInTheDocument()
   })
 
+  it('clears the placement preview after a click and only follows keyboard focus when navigating by keyboard', async () => {
+    const user = setupUser()
+    renderApp()
+    const fleetGrid = screen.getByRole('grid', { name: 'Your fleet' })
+    const previewMessage = document.querySelector('.preview-message')!
+    const idleMessage = 'Hover over or focus a cell to preview placement.'
+    const fleetCell = (label: string) =>
+      within(fleetGrid).getByRole('gridcell', { name: new RegExp(`^Your fleet, ${label},`) })
+    const previewedCells = () => fleetGrid.querySelectorAll('.preview-valid, .preview-invalid')
+
+    expect(previewMessage).toHaveTextContent(idleMessage)
+    await user.hover(fleetCell('A1'))
+    expect(previewMessage).toHaveTextContent('Carrier at A1, horizontal: fits')
+    expect(fleetGrid.querySelectorAll('.preview-valid')).toHaveLength(5)
+    expect(fleetCell('E1')).toHaveClass('preview-valid')
+
+    // Clicking focuses the button in Chromium/Firefox; the preview must not stick to that cell.
+    await user.click(fleetCell('A1'))
+    expect(fleetCell('A1')).toHaveFocus()
+    expect(previewMessage).toHaveTextContent(idleMessage)
+    expect(previewedCells()).toHaveLength(0)
+    await user.unhover(fleetCell('A1'))
+    expect(previewMessage).toHaveTextContent(idleMessage)
+    expect(previewedCells()).toHaveLength(0)
+
+    // A genuine hover over the placed ship previews the next ship honestly.
+    await user.hover(fleetCell('B1'))
+    expect(previewMessage).toHaveTextContent('Battleship at B1, horizontal: doesn\'t fit — overlaps Carrier')
+    expect(fleetCell('B1')).toHaveClass('preview-invalid')
+    await user.unhover(fleetCell('B1'))
+    expect(previewMessage).toHaveTextContent(idleMessage)
+    expect(previewedCells()).toHaveLength(0)
+
+    // Keyboard focus previews, and survives the mouse leaving the board.
+    await user.hover(fleetCell('A3'))
+    await user.keyboard('{ArrowDown}')
+    expect(fleetCell('A2')).toHaveFocus()
+    await user.unhover(fleetCell('A3'))
+    expect(previewMessage).toHaveTextContent('Battleship at A2, horizontal: fits')
+    expect(fleetGrid.querySelectorAll('.preview-valid')).toHaveLength(4)
+    await user.hover(fleetCell('A4'))
+    expect(previewMessage).toHaveTextContent('Battleship at A4, horizontal: fits')
+    await user.unhover(fleetCell('A4'))
+    expect(previewMessage).toHaveTextContent('Battleship at A2, horizontal: fits')
+    await user.keyboard('{ArrowRight}')
+    expect(previewMessage).toHaveTextContent('Battleship at B2, horizontal: fits')
+
+    // Placing with Enter clears the preview; the next arrow move shows it again.
+    await user.keyboard('{Enter}')
+    expect(screen.getByRole('button', { name: /Battleship, length 4 — Placed/ })).toBeInTheDocument()
+    expect(fleetCell('B2')).toHaveFocus()
+    expect(previewMessage).toHaveTextContent(idleMessage)
+    expect(previewedCells()).toHaveLength(0)
+    await user.keyboard('{ArrowDown}')
+    expect(previewMessage).toHaveTextContent('Cruiser at B3, horizontal: fits')
+    await user.tab()
+    expect(fleetGrid.contains(document.activeElement)).toBe(false)
+    expect(previewMessage).toHaveTextContent(idleMessage)
+    expect(previewedCells()).toHaveLength(0)
+  })
+
   it('announces successful placements and does not ask to select a ship once the fleet is complete', async () => {
     const user = setupUser()
     renderApp()
