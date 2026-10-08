@@ -8,10 +8,15 @@ export type Phase = 'setup' | 'playerTurn' | 'aiTurn' | 'gameOver'
 export type Side = 'player' | 'ai'
 
 export interface PlacementError {
-  reason: 'out-of-bounds' | 'overlap' | 'no-ship-selected'
+  reason: 'out-of-bounds' | 'overlap' | 'no-ship-selected' | 'fleet-complete' | 'already-placed'
   shipId?: ShipId
   conflictingShipId?: ShipId
   coord?: Coord
+}
+
+export interface LastPlacement {
+  shipId: ShipId
+  coord: Coord
 }
 
 export interface GameState {
@@ -23,6 +28,7 @@ export interface GameState {
     selectedShipId: ShipId | null
     orientation: Orientation
     error: PlacementError | null
+    lastPlacement: LastPlacement | null
   }
   playerBoard: Board
   enemyBoard: Board
@@ -37,7 +43,7 @@ export type Action =
   | { type: 'clearBoard' }
   | { type: 'startGame'; enemyShips: PlacedShip[] }
   | { type: 'playerFire'; coord: Coord }
-  | { type: 'aiFire'; coord: Coord; matchId: number; turnId: number }
+  | { type: 'aiFire'; coord: Coord | null; matchId: number; turnId: number }
   | { type: 'playAgain' }
   | { type: 'newGame' }
 
@@ -60,6 +66,7 @@ export function createInitialState(matchId = 1): GameState {
       selectedShipId: FLEET[0]!.id,
       orientation: 'horizontal',
       error: null,
+      lastPlacement: null,
     },
     playerBoard: { ships: [], shots: [] },
     enemyBoard: { ships: [], shots: [] },
@@ -67,12 +74,37 @@ export function createInitialState(matchId = 1): GameState {
   }
 }
 
-const clearError = (state: GameState): GameState['setup'] => ({ ...state.setup, error: null })
+const clearError = (state: GameState): GameState['setup'] => ({
+  ...state.setup,
+  error: null,
+  lastPlacement: null,
+})
+
+const withError = (state: GameState, error: PlacementError): GameState => ({
+  ...state,
+  setup: { ...clearError(state), error },
+})
+
+const isPlaced = (state: GameState, shipId: ShipId): boolean => (
+  state.setup.ships.some((ship) => ship.id === shipId)
+)
+
+function warnDev(message: string): void {
+  if (import.meta.env.DEV) console.warn(`[battleship] ${message}`)
+}
+
+export function firstUntriedCoord(board: Board): Coord | null {
+  const tried = new Set(board.shots.map((shot) => coordKey(shot.coord)))
+  return allCoords(BOARD_SIZE).find((coord) => !tried.has(coordKey(coord))) ?? null
+}
 
 export function gameReducer(state: GameState, action: Action): GameState {
   switch (action.type) {
     case 'selectShip': {
       if (state.phase !== 'setup') return state
+      if (isPlaced(state, action.shipId)) {
+        return withError(state, { reason: 'already-placed', shipId: action.shipId })
+      }
       return { ...state, setup: { ...clearError(state), selectedShipId: action.shipId } }
     }
     case 'rotate': {
@@ -89,10 +121,11 @@ export function gameReducer(state: GameState, action: Action): GameState {
       if (state.phase !== 'setup') return state
       const shipId = state.setup.selectedShipId
       if (!shipId) {
-        return {
-          ...state,
-          setup: { ...state.setup, error: { reason: 'no-ship-selected', coord: action.coord } },
-        }
+        const reason = isCompleteValidFleet(state.setup.ships) ? 'fleet-complete' : 'no-ship-selected'
+        return withError(state, { reason, coord: { ...action.coord } })
+      }
+      if (isPlaced(state, shipId)) {
+        return withError(state, { reason: 'already-placed', shipId, coord: { ...action.coord } })
       }
       const result = placeShip(state.setup.ships, {
         id: shipId,
@@ -100,27 +133,28 @@ export function gameReducer(state: GameState, action: Action): GameState {
         orientation: state.setup.orientation,
       })
       if (!result.ok) {
-        return {
-          ...state,
-          setup: {
-            ...state.setup,
-            error: {
-              reason: result.reason,
-              shipId,
-              ...(result.conflictingShipId ? { conflictingShipId: result.conflictingShipId } : {}),
-              coord: { ...action.coord },
-            },
-          },
-        }
+        return withError(state, {
+          reason: result.reason,
+          shipId,
+          ...(result.conflictingShipId ? { conflictingShipId: result.conflictingShipId } : {}),
+          coord: { ...action.coord },
+        })
       }
       const nextShipId = FLEET.find((spec) => !result.ships.some((ship) => ship.id === spec.id))?.id ?? null
       return {
         ...state,
-        setup: { ...clearError(state), ships: result.ships, selectedShipId: nextShipId },
+        setup: {
+          ...clearError(state),
+          ships: result.ships,
+          selectedShipId: nextShipId,
+          lastPlacement: { shipId, coord: { ...action.coord } },
+        },
       }
     }
     case 'randomizeFleet': {
-      if (state.phase !== 'setup' || !isCompleteValidFleet(action.ships)) return state
+      if (state.phase !== 'setup' || state.setup.ships.length > 0 || !isCompleteValidFleet(action.ships)) {
+        return state
+      }
       return {
         ...state,
         setup: {
@@ -131,11 +165,8 @@ export function gameReducer(state: GameState, action: Action): GameState {
       }
     }
     case 'clearBoard': {
-      if (state.phase !== 'setup') return state
-      return {
-        ...state,
-        setup: { ...clearError(state), ships: [], selectedShipId: FLEET[0]!.id },
-      }
+      if (state.phase !== 'setup' || state.setup.ships.length === 0) return state
+      return createInitialState(state.matchId + 1)
     }
     case 'startGame': {
       if (state.phase !== 'setup'
@@ -171,8 +202,14 @@ export function gameReducer(state: GameState, action: Action): GameState {
       if (state.phase !== 'aiTurn' || action.matchId !== state.matchId || action.turnId !== state.turnId) {
         return state
       }
-      const result = fireAt(state.playerBoard, action.coord)
-      if (!result.ok) return state
+      let result = action.coord ? fireAt(state.playerBoard, action.coord) : null
+      if (!result?.ok) {
+        const fallback = firstUntriedCoord(state.playerBoard)
+        warnDev(`AI shot ${action.coord ? `at ${coordKey(action.coord)}` : 'missing'} was rejected `
+          + `(${result ? result.reason : 'no-shot'}); ${fallback ? `firing at ${coordKey(fallback)} instead` : 'no untried cell left, returning the turn'}`)
+        result = fallback ? fireAt(state.playerBoard, fallback) : null
+      }
+      if (!result?.ok) return { ...state, turnId: state.turnId + 1, phase: 'playerTurn' }
       const lost = isFleetSunk(result.board)
       return {
         ...state,

@@ -16,7 +16,9 @@ export function randomInt(rng: Rng, n: number): number {
   if (!Number.isInteger(n) || n <= 0) {
     throw new RangeError('n must be a positive integer')
   }
-  return Math.floor(rng() * n)
+  const value = rng()
+  if (Number.isNaN(value)) return 0
+  return Math.min(n - 1, Math.max(0, Math.floor(value * n)))
 }
 
 export function shuffle<T>(rng: Rng, arr: readonly T[]): T[] {
