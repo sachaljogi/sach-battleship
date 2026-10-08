@@ -1,4 +1,5 @@
 import { formatCoord } from '../game/coordinates'
+import { isCompleteValidFleet } from '../game/placement'
 import { lastShot } from '../game/state'
 import type { GameState, PlacementError, Side } from '../game/state'
 import { rankOf, type SessionStats } from '../game/stats'
@@ -9,15 +10,36 @@ function shipName(id: string | undefined): string | undefined {
   return FLEET.find((ship) => ship.id === id)?.name
 }
 
+export const FLEET_COMPLETE_MESSAGE = 'All ships are placed. Press Start game to begin.'
+
 export function placementErrorMessage(error: PlacementError | null): string | null {
   if (!error) return null
-  const selectedShip = shipName(error.shipId)
+  if (error.reason === 'fleet-complete') return FLEET_COMPLETE_MESSAGE
   if (error.reason === 'no-ship-selected') return 'Select a ship before placing it.'
-  if (error.reason === 'out-of-bounds') return `${selectedShip ?? 'Ship'} would extend off the board.`
+  const selectedShip = shipName(error.shipId)
+  if (error.reason === 'already-placed') {
+    return `${selectedShip ?? 'That ship'} is already placed and locked. Choose Start over to change your fleet.`
+  }
+  const where = error.coord ? ` at ${formatCoord(error.coord)}` : ''
+  if (error.reason === 'out-of-bounds') return `${selectedShip ?? 'Ship'} would extend off the board${where}.`
   const otherShip = shipName(error.conflictingShipId)
   return otherShip
-    ? `${selectedShip ?? 'Ship'} would overlap your ${otherShip}.`
-    : `${selectedShip ?? 'Ship'} would overlap another ship.`
+    ? `${selectedShip ?? 'Ship'} would overlap your ${otherShip}${where}.`
+    : `${selectedShip ?? 'Ship'} would overlap another ship${where}.`
+}
+
+export function placementSuccessMessage(state: GameState): string | null {
+  const placement = state.setup.lastPlacement
+  if (!placement) return null
+  const placed = `${shipName(placement.shipId) ?? 'Ship'} placed at ${formatCoord(placement.coord)}.`
+  const next = shipName(state.setup.selectedShipId ?? undefined)
+  return next ? `${placed} Next: ${next}.` : `${placed} ${FLEET_COMPLETE_MESSAGE}`
+}
+
+export function setupMessage(state: GameState): string {
+  return placementErrorMessage(state.setup.error)
+    ?? placementSuccessMessage(state)
+    ?? (isCompleteValidFleet(state.setup.ships) ? FLEET_COMPLETE_MESSAGE : 'Set up your fleet.')
 }
 
 function playerShotText(shot: Shot | null): string | null {
@@ -52,7 +74,7 @@ export function turnMessage(state: GameState): string {
 }
 
 export function liveMessageForState(state: GameState): string {
-  if (state.phase === 'setup') return placementErrorMessage(state.setup.error) ?? 'Set up your fleet.'
+  if (state.phase === 'setup') return setupMessage(state)
   const playerShot = latestPlayerShotMessage(state)
   const aiShot = latestAiShotMessage(state)
   if (state.phase === 'aiTurn') {

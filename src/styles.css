@@ -206,6 +206,11 @@ h1 {
   font-weight: 700;
 }
 
+.placement-message {
+  color: #1f5e2e;
+  font-weight: 700;
+}
+
 .boards-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

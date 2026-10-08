@@ -8,7 +8,13 @@ import type { Coord, PlacedShip, ShipSpec } from '../game/types'
 import { playerCellViews, type GameState } from '../game/state'
 import type { PreviewCell } from './Board'
 import type { GameActions } from '../hooks/useGame'
-import { describePlayerCell, placementErrorMessage, symbolForCell } from '../ui/messages'
+import {
+  FLEET_COMPLETE_MESSAGE,
+  describePlayerCell,
+  placementErrorMessage,
+  placementSuccessMessage,
+  symbolForCell,
+} from '../ui/messages'
 
 interface SetupScreenProps {
   state: GameState
@@ -24,7 +30,9 @@ function previewDescription(
   anchor: Coord | null,
   orientation: GameState['setup']['orientation'],
   result: ReturnType<typeof validatePlacement> | null,
+  complete: boolean,
 ): string {
+  if (!spec && complete) return FLEET_COMPLETE_MESSAGE
   if (!spec || !anchor || !result) return 'Hover over or focus a cell to preview placement.'
   const prefix = `${spec.name} at ${formatCoord(anchor)}, ${orientation}: `
   if (result.ok) return `${prefix}fits`
@@ -46,7 +54,9 @@ export default function SetupScreen({ state, actions }: SetupScreenProps) {
       .map((coord) => ({ coord, valid: validation?.ok === true }))
     : []
   const complete = isCompleteValidFleet(state.setup.ships)
+  const anyPlaced = state.setup.ships.length > 0
   const errorMessage = placementErrorMessage(state.setup.error)
+  const placementMessage = placementSuccessMessage(state)
 
   return (
     <section className="setup-screen" aria-labelledby="setup-heading">
@@ -54,6 +64,7 @@ export default function SetupScreen({ state, actions }: SetupScreenProps) {
       <p>Sink all five enemy ships before the AI sinks yours.</p>
       <ul className="rules-list">
         <li>Place all five ships horizontally or vertically; ships may touch.</li>
+        <li>Once a ship is placed it is locked. To rearrange your fleet, choose Start over to begin a new game.</li>
         <li>Fire once per turn. After each shot, the AI replies after a short delay.</li>
       </ul>
 
@@ -65,8 +76,13 @@ export default function SetupScreen({ state, actions }: SetupScreenProps) {
             const selected = state.setup.selectedShipId === ship.id
             return (
               <li key={ship.id}>
-                <button type="button" aria-pressed={selected} onClick={() => actions.selectShip(ship.id)}>
-                  {ship.name}, length {ship.length} — {placed ? 'Placed' : 'Not placed'}
+                <button
+                  type="button"
+                  aria-pressed={selected}
+                  disabled={placed}
+                  onClick={() => actions.selectShip(ship.id)}
+                >
+                  {ship.name}, length {ship.length} — {placed ? 'Placed — locked' : 'Not placed'}
                 </button>
               </li>
             )
@@ -76,8 +92,8 @@ export default function SetupScreen({ state, actions }: SetupScreenProps) {
           <button type="button" onClick={actions.rotate}>
             Rotate (currently {state.setup.orientation})
           </button>
-          <button type="button" onClick={actions.randomize}>Randomize</button>
-          <button type="button" onClick={actions.clearBoard}>Clear board</button>
+          <button type="button" onClick={actions.randomize} disabled={anyPlaced}>Randomize</button>
+          <button type="button" onClick={actions.clearBoard} disabled={!anyPlaced}>Start over</button>
           <button type="button" onClick={actions.start} disabled={!complete}>Start game</button>
         </div>
       </section>
@@ -90,14 +106,15 @@ export default function SetupScreen({ state, actions }: SetupScreenProps) {
           describeCell={describePlayerCell}
           symbolFor={symbolForCell}
           onActivate={actions.placeShip}
-          canActivate={() => true}
+          canActivate={() => spec !== undefined}
           onPreview={setPreviewAnchor}
           previewCells={previewCells}
         />
         <p className="preview-message" aria-live="off">
-          {previewDescription(spec, previewAnchor, state.setup.orientation, validation)}
+          {previewDescription(spec, previewAnchor, state.setup.orientation, validation, complete)}
         </p>
         {errorMessage && <p className="error-message">{errorMessage}</p>}
+        {placementMessage && <p className="placement-message">{placementMessage}</p>}
         <Legend />
       </section>
     </section>
