@@ -217,29 +217,48 @@ describe('game reducer', () => {
     expect(placed.setup.lastPlacement).toEqual({ shipId: 'carrier', coord: { row: 0, col: 0 } })
     expect(placed.setup.selectedShipId).toBe('battleship')
     expect(gameReducer(placed, { type: 'rotate' }).setup.lastPlacement).toBeNull()
+    expect(gameReducer(placed, { type: 'selectShip', shipId: 'battleship' }).setup.lastPlacement).toBeNull()
     expect(gameReducer(placed, { type: 'selectShip', shipId: 'carrier' }).setup.lastPlacement).toBeNull()
     expect(gameReducer(placed, { type: 'clearBoard' }).setup.lastPlacement).toBeNull()
-    expect(gameReducer(placed, { type: 'randomizeFleet', ships: fleet(8) }).setup.lastPlacement).toBeNull()
     const failed = gameReducer(placed, { type: 'placeShip', coord: { row: 0, col: 0 } })
     expect(failed.setup.error?.reason).toBe('overlap')
     expect(failed.setup.lastPlacement).toBeNull()
   })
 
-  it('clears setup errors on success, re-places selected ships, and supports randomize and clear', () => {
+  it('clears setup errors on success and locks placed ships against re-placement', () => {
     let state = gameReducer(createInitialState(), { type: 'placeShip', coord: { row: 9, col: 9 } })
     state = gameReducer(state, { type: 'placeShip', coord: { row: 0, col: 0 } })
     expect(state.setup.error).toBeNull()
     expect(state.setup.ships).toHaveLength(1)
-    state = gameReducer(state, { type: 'selectShip', shipId: 'carrier' })
-    state = gameReducer(state, { type: 'placeShip', coord: { row: 2, col: 0 } })
-    expect(state.setup.ships).toHaveLength(1)
-    expect(state.setup.ships[0]?.origin).toEqual({ row: 2, col: 0 })
-    const randomized = gameReducer(state, { type: 'randomizeFleet', ships: fleet(8) })
+    expect(state.setup.selectedShipId).toBe('battleship')
+
+    const selectLocked = gameReducer(state, { type: 'selectShip', shipId: 'carrier' })
+    expect(selectLocked.setup.error).toEqual({ reason: 'already-placed', shipId: 'carrier' })
+    expect(selectLocked.setup.selectedShipId).toBe('battleship')
+    expect(selectLocked.setup.ships).toBe(state.setup.ships)
+
+    const forced: GameState = { ...state, setup: { ...state.setup, selectedShipId: 'carrier' } }
+    const rePlaced = gameReducer(forced, { type: 'placeShip', coord: { row: 2, col: 0 } })
+    expect(rePlaced.setup.error).toEqual({ reason: 'already-placed', shipId: 'carrier', coord: { row: 2, col: 0 } })
+    expect(rePlaced.setup.ships).toBe(forced.setup.ships)
+    expect(rePlaced.setup.ships[0]?.origin).toEqual({ row: 0, col: 0 })
+  })
+
+  it('allows randomize only on an empty board and makes Start over a new game', () => {
+    const empty = createInitialState()
+    expect(gameReducer(empty, { type: 'clearBoard' })).toBe(empty)
+    const randomized = gameReducer(empty, { type: 'randomizeFleet', ships: fleet(8) })
     expect(isCompleteValidFleet(randomized.setup.ships)).toBe(true)
     expect(randomized.setup.error).toBeNull()
-    const cleared = gameReducer(randomized, { type: 'clearBoard' })
-    expect(cleared.setup.ships).toEqual([])
-    expect(cleared.setup.error).toBeNull()
+    expect(gameReducer(randomized, { type: 'randomizeFleet', ships: fleet(9) })).toBe(randomized)
+
+    const placed = gameReducer(empty, { type: 'placeShip', coord: { row: 0, col: 0 } })
+    expect(gameReducer(placed, { type: 'randomizeFleet', ships: fleet(8) })).toBe(placed)
+
+    const restarted = gameReducer(placed, { type: 'clearBoard' })
+    expect(restarted).toEqual(createInitialState(placed.matchId + 1))
+    expect(restarted.setup.ships).toEqual([])
+    expect(restarted.setup.error).toBeNull()
   })
 
   it('allows newGame during a match but rejects it during setup', () => {

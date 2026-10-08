@@ -25,6 +25,13 @@ describe('UI messages', () => {
     expect(placementErrorMessage({ reason: 'fleet-complete', coord: { row: 0, col: 0 } }))
       .toBe('All ships are placed. Press Start game to begin.')
     expect(placementErrorMessage({ reason: 'no-ship-selected' })).toBe('Select a ship before placing it.')
+    expect(placementErrorMessage({ reason: 'already-placed', shipId: 'carrier' }))
+      .toBe('Carrier is already placed and locked. Choose Start over to change your fleet.')
+
+    const placed = gameReducer(createInitialState(), { type: 'placeShip', coord: { row: 0, col: 0 } })
+    const locked = gameReducer(placed, { type: 'selectShip', shipId: 'carrier' })
+    expect(liveMessageForState(locked))
+      .toBe('Carrier is already placed and locked. Choose Start over to change your fleet.')
 
     const error = gameReducer(createInitialState(), { type: 'placeShip', coord: { row: 9, col: 9 } })
     expect(liveMessageForState(error)).toBe('Carrier would extend off the board at J10.')

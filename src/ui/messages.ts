@@ -15,13 +15,16 @@ export function placementErrorMessage(error: PlacementError | null): string | nu
   if (!error) return null
   if (error.reason === 'fleet-complete') return FLEET_COMPLETE_MESSAGE
   if (error.reason === 'no-ship-selected') return 'Select a ship before placing it.'
-  const selectedShip = shipName(error.shipId) ?? 'Ship'
+  const selectedShip = shipName(error.shipId)
+  if (error.reason === 'already-placed') {
+    return `${selectedShip ?? 'That ship'} is already placed and locked. Choose Start over to change your fleet.`
+  }
   const where = error.coord ? ` at ${formatCoord(error.coord)}` : ''
-  if (error.reason === 'out-of-bounds') return `${selectedShip} would extend off the board${where}.`
+  if (error.reason === 'out-of-bounds') return `${selectedShip ?? 'Ship'} would extend off the board${where}.`
   const otherShip = shipName(error.conflictingShipId)
   return otherShip
-    ? `${selectedShip} would overlap your ${otherShip}${where}.`
-    : `${selectedShip} would overlap another ship${where}.`
+    ? `${selectedShip ?? 'Ship'} would overlap your ${otherShip}${where}.`
+    : `${selectedShip ?? 'Ship'} would overlap another ship${where}.`
 }
 
 export function placementSuccessMessage(state: GameState): string | null {

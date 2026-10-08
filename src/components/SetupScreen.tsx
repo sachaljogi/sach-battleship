@@ -54,6 +54,7 @@ export default function SetupScreen({ state, actions }: SetupScreenProps) {
       .map((coord) => ({ coord, valid: validation?.ok === true }))
     : []
   const complete = isCompleteValidFleet(state.setup.ships)
+  const anyPlaced = state.setup.ships.length > 0
   const errorMessage = placementErrorMessage(state.setup.error)
   const placementMessage = placementSuccessMessage(state)
 
@@ -63,6 +64,7 @@ export default function SetupScreen({ state, actions }: SetupScreenProps) {
       <p>Sink all five enemy ships before the AI sinks yours.</p>
       <ul className="rules-list">
         <li>Place all five ships horizontally or vertically; ships may touch.</li>
+        <li>Once a ship is placed it is locked. To rearrange your fleet, choose Start over to begin a new game.</li>
         <li>Fire once per turn. After each shot, the AI replies after a short delay.</li>
       </ul>
 
@@ -74,8 +76,13 @@ export default function SetupScreen({ state, actions }: SetupScreenProps) {
             const selected = state.setup.selectedShipId === ship.id
             return (
               <li key={ship.id}>
-                <button type="button" aria-pressed={selected} onClick={() => actions.selectShip(ship.id)}>
-                  {ship.name}, length {ship.length} — {placed ? 'Placed' : 'Not placed'}
+                <button
+                  type="button"
+                  aria-pressed={selected}
+                  disabled={placed}
+                  onClick={() => actions.selectShip(ship.id)}
+                >
+                  {ship.name}, length {ship.length} — {placed ? 'Placed — locked' : 'Not placed'}
                 </button>
               </li>
             )
@@ -85,8 +92,8 @@ export default function SetupScreen({ state, actions }: SetupScreenProps) {
           <button type="button" onClick={actions.rotate}>
             Rotate (currently {state.setup.orientation})
           </button>
-          <button type="button" onClick={actions.randomize}>Randomize</button>
-          <button type="button" onClick={actions.clearBoard}>Clear board</button>
+          <button type="button" onClick={actions.randomize} disabled={anyPlaced}>Randomize</button>
+          <button type="button" onClick={actions.clearBoard} disabled={!anyPlaced}>Start over</button>
           <button type="button" onClick={actions.start} disabled={!complete}>Start game</button>
         </div>
       </section>

@@ -102,9 +102,8 @@ describe('Battleship screens', () => {
     expect(screen.getByRole('gridcell', { name: 'Your fleet, A1, Carrier' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Carrier, length 5 — Placed/ })).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: /Carrier, length 5 — Placed/ }))
-    await user.click(screen.getByRole('gridcell', { name: 'Your fleet, G10, empty' }))
-    expect(screen.getByText('Carrier would extend off the board at G10.', { selector: '.error-message' }))
+    await user.click(screen.getByRole('gridcell', { name: 'Your fleet, H10, empty' }))
+    expect(screen.getByText('Battleship would extend off the board at H10.', { selector: '.error-message' }))
       .toBeInTheDocument()
     expect(screen.getByRole('gridcell', { name: 'Your fleet, A1, Carrier' })).toBeInTheDocument()
   })
@@ -121,6 +120,7 @@ describe('Battleship screens', () => {
       .toBeInTheDocument()
     expect(screen.getByRole('gridcell', { name: 'Your fleet, A2, empty' })).toHaveAttribute('aria-disabled', 'false')
 
+    await user.click(screen.getByRole('button', { name: 'Start over' }))
     await user.click(screen.getByRole('button', { name: 'Randomize' }))
     expect(status).toHaveTextContent('All ships are placed. Press Start game to begin.')
     const fleetGrid = screen.getByRole('grid', { name: 'Your fleet' })
@@ -140,7 +140,41 @@ describe('Battleship screens', () => {
     expect(screen.getByRole('button', { name: 'Start game' })).toBeEnabled()
   })
 
-  it('gates Start during manual placement and after clearing a randomized fleet', async () => {
+  it('locks placed ships and only Start over can change the fleet', async () => {
+    const user = setupUser()
+    renderApp()
+    const randomize = screen.getByRole('button', { name: 'Randomize' })
+    const startOver = screen.getByRole('button', { name: 'Start over' })
+    expect(randomize).toBeEnabled()
+    expect(startOver).toBeDisabled()
+    expect(screen.getByText(/Once a ship is placed it is locked/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('gridcell', { name: 'Your fleet, A1, empty' }))
+    const carrier = screen.getByRole('button', { name: 'Carrier, length 5 — Placed — locked' })
+    expect(carrier).toBeDisabled()
+    expect(carrier).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Battleship, length 4 — Not placed' }))
+      .toHaveAttribute('aria-pressed', 'true')
+    expect(randomize).toBeDisabled()
+    expect(startOver).toBeEnabled()
+
+    await user.click(carrier)
+    expect(screen.getByRole('button', { name: 'Battleship, length 4 — Not placed' }))
+      .toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByText(/already placed/, { selector: '.error-message' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('gridcell', { name: 'Your fleet, A3, empty' }))
+    expect(screen.getByRole('gridcell', { name: 'Your fleet, A1, Carrier' })).toBeInTheDocument()
+    expect(screen.getByRole('gridcell', { name: 'Your fleet, A3, Battleship' })).toBeInTheDocument()
+
+    await user.click(startOver)
+    expect(screen.getByRole('gridcell', { name: 'Your fleet, A1, empty' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Carrier, length 5 — Not placed' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Randomize' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Start over' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Start game' })).toBeDisabled()
+  })
+
+  it('gates Start during manual placement and after starting over from a randomized fleet', async () => {
     const user = setupUser()
     renderApp()
     const start = screen.getByRole('button', { name: 'Start game' })
@@ -159,10 +193,13 @@ describe('Battleship screens', () => {
       }))
     }
     expect(start).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Randomize' })).toBeDisabled()
 
+    await user.click(screen.getByRole('button', { name: 'Start over' }))
+    expect(start).toBeDisabled()
     await user.click(screen.getByRole('button', { name: 'Randomize' }))
     expect(start).toBeEnabled()
-    await user.click(screen.getByRole('button', { name: 'Clear board' }))
+    await user.click(screen.getByRole('button', { name: 'Start over' }))
     expect(start).toBeDisabled()
   })
 
