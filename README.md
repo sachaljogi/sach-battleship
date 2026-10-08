@@ -8,6 +8,8 @@ A browser Battleship game for one human player against an AI opponent.
 
 Place all five ships on your 10×10 fleet board. Ships may touch, but cannot overlap or extend beyond the board. Then take turns firing one shot at a time: a hit does not grant an extra turn. Sink all five enemy ships before the AI sinks yours.
 
+Every move has a 5-second clock. On your turn a countdown shows how many seconds remain; if it reaches zero, the game fires a sensible shot for you (an untried square, following up any hits) and tells you that time ran out. The AI also takes between 1.5 and 5 seconds to answer, and the same countdown shows when its shot is coming. Opening the "New game" confirmation pauses the clock until you choose "Keep playing".
+
 While you set up, the game tells you what just happened: each placed ship is confirmed (for example "Carrier placed at A1. Next: Battleship."), and a placement that does not fit names the square you chose. Once all five ships are on the board, the board stops accepting clicks and the message changes to "All ships are placed. Press Start game to begin." Placed ships are locked; to rearrange them, choose Start over.
 
 ## Session leaderboard
@@ -61,7 +63,7 @@ The Vite base path is `/sach-battleship/`. While `npm run preview` is running on
 ## Project structure
 
 - `src/game/` — deterministic placement, shots, AI, reducer, and session stats
-- `src/hooks/` — React game state, delayed AI turn, and leaderboard persistence
+- `src/hooks/` — React game state, the 5-second move clock, the delayed AI turn, and leaderboard persistence
 - `src/components/` — accessible setup, board, and battle screens
 - `src/ui/` — user-facing cell and status messages
 - `src/**/__tests__/` — engine, reducer, and component tests

@@ -4,6 +4,7 @@ import { lastShot } from '../game/state'
 import type { GameState, PlacementError, Side } from '../game/state'
 import { rankOf, type SessionStats } from '../game/stats'
 import type { CellView, PlayerCellView } from '../game/state'
+import type { TimerView } from '../hooks/useGame'
 import { FLEET, type Coord, type Shot } from '../game/types'
 
 function shipName(id: string | undefined): string | undefined {
@@ -42,12 +43,14 @@ export function setupMessage(state: GameState): string {
     ?? (isCompleteValidFleet(state.setup.ships) ? FLEET_COMPLETE_MESSAGE : 'Set up your fleet.')
 }
 
-function playerShotText(shot: Shot | null): string | null {
+function playerShotText(shot: Shot | null, autoFired: boolean): string | null {
   if (!shot) return null
   const result = shot.outcome === 'sunk'
     ? `you sank the enemy ${shipName(shot.sunkShipId) ?? 'ship'}`
     : shot.outcome
-  return `You fired at ${formatCoord(shot.coord)}: ${result}.`
+  return autoFired
+    ? `Time ran out, so a shot was fired for you at ${formatCoord(shot.coord)}: ${result}.`
+    : `You fired at ${formatCoord(shot.coord)}: ${result}.`
 }
 
 function aiShotText(shot: Shot | null): string | null {
@@ -59,7 +62,7 @@ function aiShotText(shot: Shot | null): string | null {
 }
 
 export function latestPlayerShotMessage(state: GameState): string | null {
-  return playerShotText(lastShot(state.enemyBoard))
+  return playerShotText(lastShot(state.enemyBoard), state.autoFired)
 }
 
 export function latestAiShotMessage(state: GameState): string | null {
@@ -73,7 +76,26 @@ export function turnMessage(state: GameState): string {
   return 'Set up your fleet.'
 }
 
-export function liveMessageForState(state: GameState): string {
+export const ANNOUNCE_LAST_SECONDS = 3
+
+export function timerMessage(state: GameState, timer: TimerView): { label: string; value: string } | null {
+  if (timer.secondsLeft === null) return null
+  if (state.phase === 'playerTurn') {
+    return { label: 'Seconds left to fire', value: timer.paused ? 'paused' : String(timer.secondsLeft) }
+  }
+  if (state.phase === 'aiTurn') {
+    return { label: 'AI fires in', value: timer.paused ? 'paused' : String(timer.secondsLeft) }
+  }
+  return null
+}
+
+function countdownAnnouncement(state: GameState, timer?: TimerView): string | null {
+  if (!timer || timer.paused || timer.secondsLeft === null || state.phase !== 'playerTurn') return null
+  if (timer.secondsLeft > ANNOUNCE_LAST_SECONDS || timer.secondsLeft <= 0) return null
+  return timer.secondsLeft === 1 ? '1 second left.' : `${timer.secondsLeft} seconds left.`
+}
+
+export function liveMessageForState(state: GameState, timer?: TimerView): string {
   if (state.phase === 'setup') return setupMessage(state)
   const playerShot = latestPlayerShotMessage(state)
   const aiShot = latestAiShotMessage(state)
@@ -84,7 +106,8 @@ export function liveMessageForState(state: GameState): string {
     const winner = state.winner === 'player' ? 'You win!' : 'The AI wins.'
     return [winner, playerShot, aiShot].filter(Boolean).join(' ')
   }
-  return [aiShot, 'Your turn — fire on Enemy waters'].filter(Boolean).join(' ')
+  const countdown = countdownAnnouncement(state, timer)
+  return countdown ?? [aiShot, 'Your turn — fire on Enemy waters'].filter(Boolean).join(' ')
 }
 
 export function winnerLabel(winner: Side): string {

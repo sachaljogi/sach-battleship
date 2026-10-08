@@ -5,14 +5,15 @@ import StatusPanel from './StatusPanel'
 import { describeEnemyCell, describePlayerCell, symbolForCell } from '../ui/messages'
 import { enemyCellViews, playerCellViews, type GameState } from '../game/state'
 import type { Coord } from '../game/types'
-import type { GameActions } from '../hooks/useGame'
+import type { GameActions, TimerView } from '../hooks/useGame'
 
 interface BattleScreenProps {
   state: GameState
+  timer: TimerView
   actions: GameActions
 }
 
-export default function BattleScreen({ state, actions }: BattleScreenProps) {
+export default function BattleScreen({ state, timer, actions }: BattleScreenProps) {
   const [confirmingNewGame, setConfirmingNewGame] = useState(false)
   const playAgainRef = useRef<HTMLButtonElement>(null)
   const enemyCells = enemyCellViews(state)
@@ -30,12 +31,19 @@ export default function BattleScreen({ state, actions }: BattleScreenProps) {
     <section className="battle-screen" aria-labelledby="battle-heading">
       <h1 id="battle-heading">Battleship</h1>
       {gameOver && <h2 className="game-result">{state.winner === 'player' ? 'You win!' : 'The AI wins.'}</h2>}
-      <StatusPanel state={state} />
+      <StatusPanel state={state} timer={timer} />
 
       {state.phase !== 'gameOver' && (
         <div className="new-game-controls">
           {!confirmingNewGame
-            ? <button type="button" onClick={() => setConfirmingNewGame(true)}>New game</button>
+            ? (
+              <button type="button" onClick={() => {
+                setConfirmingNewGame(true)
+                actions.setPaused(true)
+              }}>
+                New game
+              </button>
+            )
             : (
               <div className="confirmation">
                 <p>Abandon this game?</p>
@@ -45,7 +53,12 @@ export default function BattleScreen({ state, actions }: BattleScreenProps) {
                 }}>
                   Yes, start over
                 </button>
-                <button type="button" onClick={() => setConfirmingNewGame(false)}>Keep playing</button>
+                <button type="button" onClick={() => {
+                  setConfirmingNewGame(false)
+                  actions.setPaused(false)
+                }}>
+                  Keep playing
+                </button>
               </div>
             )}
         </div>
