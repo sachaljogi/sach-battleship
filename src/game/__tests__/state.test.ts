@@ -14,6 +14,7 @@ import {
   playerCellViews,
   remainingShipCount,
   scheduledAiTurn,
+  scheduledPlayerTurn,
   type GameState,
 } from '../state'
 import { isFleetSunk } from '../shots'
@@ -251,6 +252,39 @@ describe('game reducer', () => {
     })).toBe(aiTurn)
   })
 
+  it('applies a timed-out player shot only for the current player turn', () => {
+    const playing = startGame()
+    expect(scheduledPlayerTurn(playing)).toEqual({ matchId: playing.matchId, turnId: 0 })
+    expect(playing.autoFired).toBe(false)
+    const timedOut = gameReducer(playing, {
+      type: 'playerTimeout',
+      coord: { row: 2, col: 3 },
+      matchId: playing.matchId,
+      turnId: playing.turnId,
+    })
+    expect(timedOut.phase).toBe('aiTurn')
+    expect(timedOut.autoFired).toBe(true)
+    expect(timedOut.turnId).toBe(1)
+    expect(lastShot(timedOut.enemyBoard)?.coord).toEqual({ row: 2, col: 3 })
+    expect(scheduledPlayerTurn(timedOut)).toBeNull()
+
+    const stale = { type: 'playerTimeout', coord: { row: 4, col: 4 }, matchId: playing.matchId, turnId: 0 } as const
+    expect(gameReducer(timedOut, stale)).toBe(timedOut)
+    expect(gameReducer(playing, { ...stale, matchId: playing.matchId + 1 })).toBe(playing)
+    expect(gameReducer(playing, { ...stale, turnId: 5 })).toBe(playing)
+    expect(gameReducer(playing, { ...stale, coord: { row: 10, col: 0 } })).toBe(playing)
+
+    const replied = gameReducer(timedOut, {
+      type: 'aiFire',
+      coord: { row: 0, col: 0 },
+      matchId: timedOut.matchId,
+      turnId: timedOut.turnId,
+    })
+    expect(replied.autoFired).toBe(true)
+    const manual = gameReducer(replied, { type: 'playerFire', coord: { row: 5, col: 5 } })
+    expect(manual.autoFired).toBe(false)
+  })
+
   it('requires complete valid player and enemy fleets before starting', () => {
     const setup = createInitialState()
     expect(gameReducer(setup, { type: 'startGame', enemyShips: fleet(1) })).toBe(setup)
@@ -373,6 +407,33 @@ describe('game reducer', () => {
     })
     expect(setup.setup.ships).toHaveLength(1)
     expect(setup.setup.ships).toBe(ships)
+  })
+
+  it('reports fleet-complete instead of no-ship-selected once every ship is placed', () => {
+    const randomized = gameReducer(createInitialState(), { type: 'randomizeFleet', ships: fleet(8) })
+    expect(randomized.setup.selectedShipId).toBeNull()
+    const clicked = gameReducer(randomized, { type: 'placeShip', coord: { row: 3, col: 4 } })
+    expect(clicked.setup.error).toEqual({ reason: 'fleet-complete', coord: { row: 3, col: 4 } })
+    expect(clicked.setup.ships).toBe(randomized.setup.ships)
+    expect(clicked.setup.lastPlacement).toBeNull()
+
+    const partial = gameReducer(createInitialState(), { type: 'placeShip', coord: { row: 0, col: 0 } })
+    const unselected = { ...partial, setup: { ...partial.setup, selectedShipId: null } }
+    const noShip = gameReducer(unselected, { type: 'placeShip', coord: { row: 5, col: 5 } })
+    expect(noShip.setup.error).toEqual({ reason: 'no-ship-selected', coord: { row: 5, col: 5 } })
+  })
+
+  it('records the last successful placement and clears it on the next setup action', () => {
+    const placed = gameReducer(createInitialState(), { type: 'placeShip', coord: { row: 0, col: 0 } })
+    expect(placed.setup.lastPlacement).toEqual({ shipId: 'carrier', coord: { row: 0, col: 0 } })
+    expect(placed.setup.selectedShipId).toBe('battleship')
+    expect(gameReducer(placed, { type: 'rotate' }).setup.lastPlacement).toBeNull()
+    expect(gameReducer(placed, { type: 'selectShip', shipId: 'battleship' }).setup.lastPlacement).toBeNull()
+    expect(gameReducer(placed, { type: 'selectShip', shipId: 'carrier' }).setup.lastPlacement).toBeNull()
+    expect(gameReducer(placed, { type: 'clearBoard' }).setup.lastPlacement).toBeNull()
+    const failed = gameReducer(placed, { type: 'placeShip', coord: { row: 0, col: 0 } })
+    expect(failed.setup.error?.reason).toBe('overlap')
+    expect(failed.setup.lastPlacement).toBeNull()
   })
 
   it('clears setup errors on success and locks placed ships against re-placement', () => {

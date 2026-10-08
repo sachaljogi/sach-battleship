@@ -32,12 +32,15 @@ test('production app supports a complete smoke flow under its Pages base path', 
   const enemyGrid = page.getByRole('grid', { name: 'Enemy waters' })
   const playerGrid = page.getByRole('grid', { name: 'Your fleet' })
   const status = page.getByRole('status')
+  const timer = page.getByRole('timer')
+  await expect(timer).toContainText('Seconds left to fire')
 
   for (let shot = 1; shot <= 3; shot += 1) {
     await enemyGrid.getByRole('gridcell', { name: /untried$/ }).first().click()
     const thinking = page.getByText('AI is thinking...', { exact: true })
     await expect(thinking).toBeVisible()
-    await expect(thinking).toBeHidden()
+    await expect(timer).toContainText('AI fires in')
+    await expect(thinking).toBeHidden({ timeout: 10_000 })
     await expect(status).toContainText('AI fired at')
     await expect(playerGrid.locator(
       '[data-state="miss"], [data-state="hit"], [data-state="sunk"]',

@@ -8,7 +8,14 @@ import type { Coord, PlacedShip, ShipSpec } from '../game/types'
 import { playerCellViews, type GameState } from '../game/state'
 import type { PreviewCell } from './Board'
 import type { GameActions } from '../hooks/useGame'
-import { describePlayerCell, forfeitMessage, placementErrorMessage, symbolForCell } from '../ui/messages'
+import {
+  FLEET_COMPLETE_MESSAGE,
+  describePlayerCell,
+  forfeitMessage,
+  placementErrorMessage,
+  placementSuccessMessage,
+  symbolForCell,
+} from '../ui/messages'
 
 interface SetupScreenProps {
   state: GameState
@@ -24,7 +31,9 @@ function previewDescription(
   anchor: Coord | null,
   orientation: GameState['setup']['orientation'],
   result: ReturnType<typeof validatePlacement> | null,
+  complete: boolean,
 ): string {
+  if (!spec && complete) return FLEET_COMPLETE_MESSAGE
   if (!spec || !anchor || !result) return 'Hover over or focus a cell to preview placement.'
   const prefix = `${spec.name} at ${formatCoord(anchor)}, ${orientation}: `
   if (result.ok) return `${prefix}fits`
@@ -49,6 +58,7 @@ export default function SetupScreen({ state, actions }: SetupScreenProps) {
   const anyPlaced = state.setup.ships.length > 0
   const errorMessage = placementErrorMessage(state.setup.error)
   const forfeitNotice = forfeitMessage(state)
+  const placementMessage = placementSuccessMessage(state)
 
   return (
     <section className="setup-screen" aria-labelledby="setup-heading">
@@ -99,14 +109,15 @@ export default function SetupScreen({ state, actions }: SetupScreenProps) {
           describeCell={describePlayerCell}
           symbolFor={symbolForCell}
           onActivate={actions.placeShip}
-          canActivate={() => true}
+          canActivate={() => spec !== undefined}
           onPreview={setPreviewAnchor}
           previewCells={previewCells}
         />
         <p className="preview-message" aria-live="off">
-          {previewDescription(spec, previewAnchor, state.setup.orientation, validation)}
+          {previewDescription(spec, previewAnchor, state.setup.orientation, validation, complete)}
         </p>
         {errorMessage && <p className="error-message">{errorMessage}</p>}
+        {placementMessage && <p className="placement-message">{placementMessage}</p>}
         <Legend />
       </section>
     </section>

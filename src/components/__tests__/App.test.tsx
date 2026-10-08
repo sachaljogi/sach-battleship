@@ -4,13 +4,16 @@ import { act, cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../../App'
-import { AI_DELAY_MS } from '../../hooks/useGame'
+import { AI_MIN_THINK_MS, DEFAULT_TIMERS, MOVE_TIME_MS, type GameTimers } from '../../hooks/useGame'
+import { STATS_STORAGE_KEY } from '../../hooks/useSessionStats'
 import { allCoords, coordKey, formatCoord } from '../../game/coordinates'
 import { randomFleet, shipCells } from '../../game/placement'
 import { createRng, type Rng } from '../../game/rng'
 import type { Coord, PlacedShip } from '../../game/types'
 
 const DEFAULT_SEED = 7281
+const AI_DELAY_MS = 1500
+const TEST_TIMERS: GameTimers = { ...DEFAULT_TIMERS, aiMinThinkMs: AI_DELAY_MS, aiMaxThinkMs: AI_DELAY_MS }
 
 function enemyFleetForSeed(seed: number): PlacedShip[] {
   const rng = createRng(seed)
@@ -18,13 +21,13 @@ function enemyFleetForSeed(seed: number): PlacedShip[] {
   return randomFleet(rng)
 }
 
-function renderApp(seed = DEFAULT_SEED, strict = false) {
-  const app = <App rng={createRng(seed)} />
+function renderApp(seed = DEFAULT_SEED, strict = false, timers = TEST_TIMERS) {
+  const app = <App rng={createRng(seed)} timers={timers} />
   return render(strict ? <StrictMode>{app}</StrictMode> : app)
 }
 
 async function startGameWithRng(user: ReturnType<typeof setupUser>, rng: Rng) {
-  render(<App rng={rng} />)
+  render(<App rng={rng} timers={TEST_TIMERS} />)
   await user.click(screen.getByRole('button', { name: 'Randomize' }))
   await user.click(screen.getByRole('button', { name: 'Start game' }))
 }
@@ -33,8 +36,13 @@ function setupUser() {
   return userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
 }
 
-async function startRandomizedGame(user: ReturnType<typeof setupUser>, seed = DEFAULT_SEED, strict = false) {
-  renderApp(seed, strict)
+async function startRandomizedGame(
+  user: ReturnType<typeof setupUser>,
+  seed = DEFAULT_SEED,
+  strict = false,
+  timers = TEST_TIMERS,
+) {
+  renderApp(seed, strict, timers)
   await user.click(screen.getByRole('button', { name: 'Randomize' }))
   await user.click(screen.getByRole('button', { name: 'Start game' }))
   return enemyFleetForSeed(seed)
@@ -45,6 +53,10 @@ function enemyCell(coord: Coord): HTMLElement {
   return within(grid).getByRole('gridcell', {
     name: `Enemy waters, ${formatCoord(coord)}, untried`,
   })
+}
+
+function statusPanel(): HTMLElement {
+  return screen.getByRole('region', { name: 'Game status' })
 }
 
 function countShots(grid: HTMLElement): number {
@@ -75,7 +87,7 @@ async function advanceAI(ms = AI_DELAY_MS) {
 }
 
 beforeEach(() => {
-  sessionStorage.clear()
+  window.sessionStorage.clear()
   vi.useFakeTimers()
   vi.stubGlobal('jest', vi)
   vi.spyOn(console, 'error').mockImplementation(() => undefined)
@@ -98,15 +110,108 @@ describe('Battleship screens', () => {
     const firstCell = screen.getByRole('gridcell', { name: 'Your fleet, A1, empty' })
     await user.click(firstCell)
     await user.click(screen.getByRole('gridcell', { name: 'Your fleet, A1, Carrier' }))
-    expect(screen.getByText('Battleship would overlap your Carrier.', { selector: '.error-message' }))
+    expect(screen.getByText('Battleship would overlap your Carrier at A1.', { selector: '.error-message' }))
       .toBeInTheDocument()
     expect(screen.getByRole('gridcell', { name: 'Your fleet, A1, Carrier' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Carrier, length 5 — Placed/ })).toBeInTheDocument()
 
     await user.click(screen.getByRole('gridcell', { name: 'Your fleet, H10, empty' }))
-    expect(screen.getByText('Battleship would extend off the board.', { selector: '.error-message' }))
+    expect(screen.getByText('Battleship would extend off the board at H10.', { selector: '.error-message' }))
       .toBeInTheDocument()
     expect(screen.getByRole('gridcell', { name: 'Your fleet, A1, Carrier' })).toBeInTheDocument()
+  })
+
+  it('clears the placement preview after a click and only follows keyboard focus when navigating by keyboard', async () => {
+    const user = setupUser()
+    renderApp()
+    const fleetGrid = screen.getByRole('grid', { name: 'Your fleet' })
+    const previewMessage = document.querySelector('.preview-message')!
+    const idleMessage = 'Hover over or focus a cell to preview placement.'
+    const fleetCell = (label: string) =>
+      within(fleetGrid).getByRole('gridcell', { name: new RegExp(`^Your fleet, ${label},`) })
+    const previewedCells = () => fleetGrid.querySelectorAll('.preview-valid, .preview-invalid')
+
+    expect(previewMessage).toHaveTextContent(idleMessage)
+    await user.hover(fleetCell('A1'))
+    expect(previewMessage).toHaveTextContent('Carrier at A1, horizontal: fits')
+    expect(fleetGrid.querySelectorAll('.preview-valid')).toHaveLength(5)
+    expect(fleetCell('E1')).toHaveClass('preview-valid')
+
+    // Clicking focuses the button in Chromium/Firefox; the preview must not stick to that cell.
+    await user.click(fleetCell('A1'))
+    expect(fleetCell('A1')).toHaveFocus()
+    expect(previewMessage).toHaveTextContent(idleMessage)
+    expect(previewedCells()).toHaveLength(0)
+    await user.unhover(fleetCell('A1'))
+    expect(previewMessage).toHaveTextContent(idleMessage)
+    expect(previewedCells()).toHaveLength(0)
+
+    // A genuine hover over the placed ship previews the next ship honestly.
+    await user.hover(fleetCell('B1'))
+    expect(previewMessage).toHaveTextContent('Battleship at B1, horizontal: doesn\'t fit — overlaps Carrier')
+    expect(fleetCell('B1')).toHaveClass('preview-invalid')
+    await user.unhover(fleetCell('B1'))
+    expect(previewMessage).toHaveTextContent(idleMessage)
+    expect(previewedCells()).toHaveLength(0)
+
+    // Keyboard focus previews, and survives the mouse leaving the board.
+    await user.hover(fleetCell('A3'))
+    await user.keyboard('{ArrowDown}')
+    expect(fleetCell('A2')).toHaveFocus()
+    await user.unhover(fleetCell('A3'))
+    expect(previewMessage).toHaveTextContent('Battleship at A2, horizontal: fits')
+    expect(fleetGrid.querySelectorAll('.preview-valid')).toHaveLength(4)
+    await user.hover(fleetCell('A4'))
+    expect(previewMessage).toHaveTextContent('Battleship at A4, horizontal: fits')
+    await user.unhover(fleetCell('A4'))
+    expect(previewMessage).toHaveTextContent('Battleship at A2, horizontal: fits')
+    await user.keyboard('{ArrowRight}')
+    expect(previewMessage).toHaveTextContent('Battleship at B2, horizontal: fits')
+
+    // Placing with Enter clears the preview; the next arrow move shows it again.
+    await user.keyboard('{Enter}')
+    expect(screen.getByRole('button', { name: /Battleship, length 4 — Placed/ })).toBeInTheDocument()
+    expect(fleetCell('B2')).toHaveFocus()
+    expect(previewMessage).toHaveTextContent(idleMessage)
+    expect(previewedCells()).toHaveLength(0)
+    await user.keyboard('{ArrowDown}')
+    expect(previewMessage).toHaveTextContent('Cruiser at B3, horizontal: fits')
+    await user.tab()
+    expect(fleetGrid.contains(document.activeElement)).toBe(false)
+    expect(previewMessage).toHaveTextContent(idleMessage)
+    expect(previewedCells()).toHaveLength(0)
+  })
+
+  it('announces successful placements and does not ask to select a ship once the fleet is complete', async () => {
+    const user = setupUser()
+    renderApp()
+    const status = screen.getByRole('status')
+    expect(status).toHaveTextContent('Set up your fleet.')
+
+    await user.click(screen.getByRole('gridcell', { name: 'Your fleet, A1, empty' }))
+    expect(status).toHaveTextContent('Carrier placed at A1. Next: Battleship.')
+    expect(screen.getByText('Carrier placed at A1. Next: Battleship.', { selector: '.placement-message' }))
+      .toBeInTheDocument()
+    expect(screen.getByRole('gridcell', { name: 'Your fleet, A2, empty' })).toHaveAttribute('aria-disabled', 'false')
+
+    await user.click(screen.getByRole('button', { name: 'Start over' }))
+    await user.click(screen.getByRole('button', { name: 'Randomize' }))
+    expect(status).toHaveTextContent('All ships are placed. Press Start game to begin.')
+    const fleetGrid = screen.getByRole('grid', { name: 'Your fleet' })
+    const cells = fleetGrid.querySelectorAll('[role="gridcell"]')
+    expect(cells).toHaveLength(100)
+    cells.forEach((cell) => expect(cell).toHaveAttribute('aria-disabled', 'true'))
+    const shipsBefore = boardSnapshot(fleetGrid)
+
+    await user.click(cells[0]!)
+    await user.click(cells[99]!)
+    expect(boardSnapshot(fleetGrid)).toBe(shipsBefore)
+    expect(status).toHaveTextContent('All ships are placed. Press Start game to begin.')
+    expect(status).not.toHaveTextContent('Select a ship')
+    expect(screen.queryByText('Select a ship before placing it.')).not.toBeInTheDocument()
+    expect(screen.getByText('All ships are placed. Press Start game to begin.', { selector: '.preview-message' }))
+      .toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Start game' })).toBeEnabled()
   })
 
   it('locks placed ships and only Start over can change the fleet', async () => {
@@ -191,7 +296,7 @@ describe('Battleship screens', () => {
     await advanceAI(1)
     expect(countShots(playerGrid)).toBe(1)
     const aiBoardBefore = boardSnapshot(playerGrid)
-    await advanceAI(5000)
+    await advanceAI(MOVE_TIME_MS - 1)
     expect(boardSnapshot(playerGrid)).toBe(aiBoardBefore)
     expect(countShots(enemyGrid)).toBe(1)
   })
@@ -209,7 +314,8 @@ describe('Battleship screens', () => {
     await advanceAI()
     expect(screen.queryByText('AI is thinking...')).not.toBeInTheDocument()
     expect(countShots(playerGrid)).toBe(1)
-    expect(vi.getTimerCount()).toBe(0)
+    expect(screen.getByRole('timer')).toHaveTextContent('Seconds left to fire')
+    expect(vi.getTimerCount()).toBe(2)
 
     await user.click(enemyCell({ row: 0, col: 1 }))
     await advanceAI()
@@ -318,14 +424,145 @@ describe('Battleship screens', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it('fires exactly one AI shot in Strict Mode', async () => {
+  it('fires exactly one AI shot and one timed-out player shot in Strict Mode', async () => {
     const user = setupUser()
     await startRandomizedGame(user, 94, true)
     const playerGrid = screen.getByRole('grid', { name: 'Your fleet' })
+    const enemyGrid = screen.getByRole('grid', { name: 'Enemy waters' })
     await user.click(enemyCell({ row: 0, col: 0 }))
     await advanceAI()
     expect(countShots(playerGrid)).toBe(1)
-    expect(vi.getTimerCount()).toBe(0)
+    expect(screen.getByRole('timer')).toHaveTextContent('Seconds left to fire5')
+
+    await advanceAI(MOVE_TIME_MS)
+    expect(countShots(enemyGrid)).toBe(2)
+    expect(screen.getByText('AI is thinking...')).toBeInTheDocument()
+    await advanceAI()
+    expect(countShots(playerGrid)).toBe(2)
+    expect(countShots(enemyGrid)).toBe(2)
+  })
+
+  describe('move timer', () => {
+    it('counts down and fires automatically when the player runs out of time', async () => {
+      const user = setupUser()
+      await startRandomizedGame(user)
+      const enemyGrid = screen.getByRole('grid', { name: 'Enemy waters' })
+      const timer = screen.getByRole('timer')
+      expect(timer).toHaveTextContent('Seconds left to fire5')
+      expect(timer).toHaveAttribute('data-urgent', 'false')
+      expect(screen.getByRole('status')).toHaveTextContent('Your turn — fire on Enemy waters')
+
+      await advanceAI(2000)
+      expect(timer).toHaveTextContent('Seconds left to fire3')
+      expect(timer).toHaveAttribute('data-urgent', 'true')
+      expect(screen.getByRole('status')).toHaveTextContent('3 seconds left.')
+      await advanceAI(2000)
+      expect(timer).toHaveTextContent('Seconds left to fire1')
+      expect(screen.getByRole('status')).toHaveTextContent('1 second left.')
+      await advanceAI(999)
+      expect(countShots(enemyGrid)).toBe(0)
+
+      await advanceAI(1)
+      expect(countShots(enemyGrid)).toBe(1)
+      expect(screen.getByText('AI is thinking...')).toBeInTheDocument()
+      expect(within(statusPanel()).getByText(/^Time ran out, so a shot was fired for you at [A-J](?:10|[1-9]):/))
+        .toBeInTheDocument()
+      expect(screen.getByRole('status')).toHaveTextContent('Time ran out, so a shot was fired for you at')
+      expect(screen.getByRole('timer')).toHaveTextContent(`AI fires in${Math.ceil(AI_DELAY_MS / 1000)}`)
+
+      await advanceAI()
+      expect(countShots(screen.getByRole('grid', { name: 'Your fleet' }))).toBe(1)
+      expect(screen.getByRole('timer')).toHaveTextContent('Seconds left to fire5')
+      await user.click(enemyCell({ row: 9, col: 9 }))
+      expect(within(statusPanel()).getByText(/^You fired at J10:/)).toBeInTheDocument()
+    })
+
+    it('does not fire twice when the player fires just before the deadline', async () => {
+      const user = setupUser()
+      await startRandomizedGame(user)
+      const enemyGrid = screen.getByRole('grid', { name: 'Enemy waters' })
+      const playerGrid = screen.getByRole('grid', { name: 'Your fleet' })
+
+      await advanceAI(4900)
+      await user.click(enemyCell({ row: 0, col: 0 }))
+      expect(countShots(enemyGrid)).toBe(1)
+      await advanceAI(200)
+      expect(countShots(enemyGrid)).toBe(1)
+      expect(countShots(playerGrid)).toBe(0)
+      await advanceAI(AI_DELAY_MS - 200)
+      expect(countShots(playerGrid)).toBe(1)
+      expect(countShots(enemyGrid)).toBe(1)
+      expect(within(statusPanel()).getByText(/^You fired at A1:/)).toBeInTheDocument()
+    })
+
+    it('pauses the countdown while the abandon confirmation is open and resumes on Keep playing', async () => {
+      const user = setupUser()
+      await startRandomizedGame(user)
+      const enemyGrid = screen.getByRole('grid', { name: 'Enemy waters' })
+      await advanceAI(2000)
+      expect(screen.getByRole('timer')).toHaveTextContent('Seconds left to fire3')
+
+      await user.click(screen.getByRole('button', { name: 'New game' }))
+      expect(screen.getByRole('timer')).toHaveTextContent('Seconds left to firepaused')
+      expect(vi.getTimerCount()).toBe(0)
+      await advanceAI(MOVE_TIME_MS * 2)
+      expect(countShots(enemyGrid)).toBe(0)
+      expect(screen.getByRole('status')).not.toHaveTextContent('seconds left')
+
+      await user.click(screen.getByRole('button', { name: 'Keep playing' }))
+      expect(screen.getByRole('timer')).toHaveTextContent('Seconds left to fire3')
+      await advanceAI(2999)
+      expect(countShots(enemyGrid)).toBe(0)
+      await advanceAI(1)
+      expect(countShots(enemyGrid)).toBe(1)
+    })
+
+    it('lets the AI reply within the 5 second budget using the default timers', async () => {
+      const user = setupUser()
+      await startRandomizedGame(user, DEFAULT_SEED, false, DEFAULT_TIMERS)
+      const playerGrid = screen.getByRole('grid', { name: 'Your fleet' })
+      await user.click(enemyCell({ row: 0, col: 0 }))
+      expect(screen.getByRole('timer')).toHaveTextContent(/^AI fires in[1-5]$/)
+
+      await advanceAI(AI_MIN_THINK_MS - 1)
+      expect(countShots(playerGrid)).toBe(0)
+      await advanceAI(MOVE_TIME_MS - AI_MIN_THINK_MS + 1)
+      expect(countShots(playerGrid)).toBe(1)
+      expect(screen.getByRole('timer')).toHaveTextContent('Seconds left to fire5')
+    })
+
+    it('clears the player timer on confirmed new game and on unmount', async () => {
+      const user = setupUser()
+      await startRandomizedGame(user)
+      await advanceAI(1000)
+      expect(vi.getTimerCount()).toBeGreaterThan(0)
+      await user.click(screen.getByRole('button', { name: 'New game' }))
+      await user.click(screen.getByRole('button', { name: 'Yes, start over' }))
+      expect(screen.getByRole('button', { name: 'Start game' })).toBeDisabled()
+      expect(screen.queryByRole('timer')).not.toBeInTheDocument()
+      expect(vi.getTimerCount()).toBe(0)
+
+      await user.click(screen.getByRole('button', { name: 'Randomize' }))
+      await user.click(screen.getByRole('button', { name: 'Start game' }))
+      expect(screen.getByRole('timer')).toHaveTextContent('Seconds left to fire5')
+      await advanceAI(MOVE_TIME_MS - 1)
+      expect(countShots(screen.getByRole('grid', { name: 'Enemy waters' }))).toBe(0)
+      cleanup()
+      expect(vi.getTimerCount()).toBe(0)
+    })
+
+    it('stops all timers when the game ends', async () => {
+      const user = setupUser()
+      const enemyFleet = await startRandomizedGame(user, 91)
+      const cells = enemyFleet.flatMap((ship) => shipCells(ship))
+      for (const [index, coord] of cells.entries()) {
+        await user.click(enemyCell(coord))
+        if (index < cells.length - 1) await advanceAI()
+      }
+      expect(screen.getByRole('heading', { name: 'You win!' })).toBeInTheDocument()
+      expect(screen.queryByRole('timer')).not.toBeInTheDocument()
+      expect(vi.getTimerCount()).toBe(0)
+    })
   })
 
   it('keeps hidden enemy data out of the grid until a ship is sunk', async () => {
@@ -414,4 +651,66 @@ describe('Battleship screens', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Set up your fleet.')
     expect(screen.getByRole('status')).not.toHaveTextContent('The AI wins.')
   }, 30000)
+
+  it('records a finished game once in the session leaderboard and announces the promotion', async () => {
+    const user = setupUser()
+    const enemyFleet = await startRandomizedGame(user, 91, true)
+    const leaderboard = screen.getByRole('region', { name: 'Session leaderboard' })
+    expect(within(leaderboard).getByText('Recruit')).toBeInTheDocument()
+    expect(within(leaderboard).getByText('0–0')).toBeInTheDocument()
+    expect(within(leaderboard).queryByRole('table')).toBeNull()
+
+    const cells = enemyFleet.flatMap((ship) => shipCells(ship))
+    for (const [index, coord] of cells.entries()) {
+      await user.click(enemyCell(coord))
+      if (index < cells.length - 1) await advanceAI()
+    }
+    expect(screen.getByRole('heading', { name: 'You win!' })).toBeInTheDocument()
+
+    expect(within(leaderboard).getByText('Ensign')).toBeInTheDocument()
+    expect(within(leaderboard).getByText('1–0')).toBeInTheDocument()
+    expect(within(leaderboard).getByText(`${cells.length} shots`)).toBeInTheDocument()
+    expect(within(leaderboard).getByText('Promoted to Ensign!')).toBeInTheDocument()
+    expect(screen.getByTestId('rank-announcement')).toHaveTextContent('Promoted to Ensign!')
+    const table = within(leaderboard).getByRole('table', { name: 'Most recent games' })
+    expect(within(table).getAllByRole('columnheader').map((cell) => cell.textContent))
+      .toEqual(['Game', 'Winner', 'Your shots', 'AI shots'])
+    const rows = within(table).getAllByRole('row').slice(1)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toHaveTextContent(`1You${cells.length}${cells.length - 1}`)
+
+    await advanceAI(5000)
+    expect(within(leaderboard).getByText('1–0')).toBeInTheDocument()
+    const saved = JSON.parse(window.sessionStorage.getItem(STATS_STORAGE_KEY)!)
+    expect(saved).toMatchObject({ gamesPlayed: 1, wins: 1, losses: 0, streak: 1, bestWinShots: cells.length })
+
+    await user.click(screen.getByRole('button', { name: 'Play again' }))
+    expect(within(leaderboard).getByText('1–0')).toBeInTheDocument()
+    expect(screen.getByTestId('rank-announcement')).toHaveTextContent('')
+    expect(within(leaderboard).getByText('2 more wins to reach Captain.')).toBeInTheDocument()
+  })
+
+  it('restores the leaderboard from sessionStorage on reload', async () => {
+    window.sessionStorage.setItem(STATS_STORAGE_KEY, JSON.stringify({
+      gamesPlayed: 3,
+      wins: 1,
+      losses: 2,
+      streak: 0,
+      bestWinShots: 35,
+      lastRankUp: { game: 1, rank: 'Ensign' },
+      games: [
+        { game: 1, matchId: 1, winner: 'player', playerShots: 35, aiShots: 30 },
+        { game: 2, matchId: 2, winner: 'ai', playerShots: 50, aiShots: 51 },
+        { game: 3, matchId: 3, winner: 'ai', playerShots: 44, aiShots: 45 },
+      ],
+    }))
+    renderApp()
+    const leaderboard = screen.getByRole('region', { name: 'Session leaderboard' })
+    expect(within(leaderboard).getByText('Ensign')).toBeInTheDocument()
+    expect(within(leaderboard).getByText('1–2')).toBeInTheDocument()
+    expect(within(leaderboard).getByText('35 shots')).toBeInTheDocument()
+    expect(within(leaderboard).queryByText('Promoted to Ensign!')).toBeNull()
+    const rows = within(within(leaderboard).getByRole('table')).getAllByRole('row').slice(1)
+    expect(rows.map((row) => row.textContent)).toEqual(['3AI4445', '2AI5051', '1You3530'])
+  })
 })

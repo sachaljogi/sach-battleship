@@ -4,12 +4,16 @@ Behind the screen, a rules engine—the referee—decides which moves are allowe
 
 ## The four parts of a game
 
-1. **Set up the fleet.** Place all five ships yourself or let the game arrange them. Play cannot start until every ship is placed. A ship is locked the moment it is placed: its entry in the fleet list is greyed out, and the referee refuses any attempt to move it. “Randomize” only works while the board is still empty. To rearrange ships you press “Start over”, which the referee treats as a new game (the game number changes), so nothing from the half-finished setup carries over.
-2. **Your turn.** Choose a square on the enemy board that has not been fired on before. A hit and a miss both use up your turn.
-3. **The computer's turn.** After a short pause of about 0.6 seconds, the computer fires at one untried square on your board.
+1. **Set up the fleet.** Place all five ships yourself or let the game arrange them. Play cannot start until every ship is placed. A ship is locked the moment it is placed: its entry in the fleet list is greyed out, and the referee refuses any attempt to move it. “Randomize” only works while the board is still empty. To rearrange ships you press “Start over”, which the referee treats as a new game (the game number changes), so nothing from the half-finished setup carries over. After every placement the referee remembers which ship went where, so the screen (and a screen reader) can confirm it, such as "Carrier placed at A1. Next: Battleship." Once the fleet is complete the board no longer takes clicks, and the message reads "All ships are placed. Press Start game to begin." If a click still reaches the referee at that point, it answers with that same message instead of asking you to select a ship.
+2. **Your turn.** Choose a square on the enemy board that has not been fired on before. A hit and a miss both use up your turn. You have 5 seconds: a countdown next to "Your turn" shows the seconds left, and the last three seconds are also read out for screen-reader users. If the clock reaches zero, the game chooses a square for you using the same search method the computer uses (an untried square, following up any earlier hits), fires it, and the status line says that time ran out. Opening the "New game" confirmation pauses the clock; "Keep playing" resumes it with the same number of seconds remaining.
+3. **The computer's turn.** The computer "thinks" for between 1.5 and 5 seconds, and the same countdown shows when its shot will land. The exact pause is fixed for each turn (it is worked out from the game number, turn number and your last shot), so the same game always replays the same way. Then it fires at one untried square on your board.
 4. **Game over.** Play stops as soon as either fleet is sunk. The winner is announced, coins are awarded, and the enemy's remaining ships are shown. “Play again” starts a fresh setup for the next game of the series.
 
 The referee checks every move, including whether it is the right player's turn and whether a square has already been used. The screen also marks unavailable squares so they cannot be chosen by mistake.
+
+## How messages reach screen readers
+
+A hidden "status" line on the page is read aloud by screen readers whenever its text changes. Its text is worked out from the referee's current state, never typed in by the screen. Because only *changes* are read out, every message must differ from the one before it: placement problems name the square ("Carrier would extend off the board at J1."), and successful placements are announced too, rather than falling back to the generic "Set up your fleet."
 
 ## How the computer chooses shots
 
@@ -43,11 +47,23 @@ Saving is a thin layer outside the referee. Whenever the scorecard changes, the 
 
 ## Why delayed moves are guarded
 
-The pause before the computer fires lets the screen show that it is thinking. That delayed move carries the number of the game and the number of the turn for which it was planned. Think of it as a letter postmarked with both numbers: if the game has restarted or moved on, the referee throws the old letter away instead of applying it.
+The referee never looks at a clock. All timing—the 5-second player clock, the computer's thinking pause and the once-a-second countdown—lives in the screen layer (`useGame`). When time runs out, the screen sends the referee a normal move: either the computer's shot or an automatic shot on the player's behalf. Each such delayed move carries the number of the game and the number of the turn for which it was planned. Think of it as a letter postmarked with both numbers: if the game has restarted or moved on, the referee throws the old letter away instead of applying it.
 
 If the computer's planned shot turns out to be unusable (for example a square that was already fired on, or no square at all), the referee does not ignore it. Instead it fires at the first untried square on your board, so the game never waits forever on "AI is thinking...". In development builds a warning is printed to the browser console when this happens.
 
-When a game resets, the screen leaves the computer's turn, or the screen closes, the waiting move is cancelled. The referee still checks the game and turn numbers when a move arrives, as a second safeguard in case cancellation was too late. In development, a safety check sets up and cleans up the screen's delayed work twice; cancelling the first wait ensures only one computer move is scheduled.
+When a game resets, the turn changes, the clock is paused, or the screen closes, the waiting move and its countdown are cancelled. The referee still checks the game and turn numbers when a move arrives, as a second safeguard in case cancellation was too late. In development, a safety check sets up and cleans up the screen's delayed work twice; cancelling the first wait ensures only one computer move is scheduled.
+
+## How the session leaderboard keeps score
+
+The leaderboard is a separate scorekeeper that sits beside the referee rather than inside it. The referee only runs one game at a time and knows nothing about earlier games; the scorekeeper watches for the moment a game ends and writes one line in its ledger.
+
+The ledger (`SessionStats`) holds the number of games played, wins, losses, the current win streak, the best win (fewest shots), the list of finished games, and a note of the last promotion. Adding a result is a pure function, `recordGame(stats, result)`: it takes the old ledger and a result and returns a new ledger without changing the old one. The result it needs is small—which game number it was, who won, and how many shots each side fired—so other features (for example a coin reward or a best-of-three series) can read the same result and keep their own ledgers alongside this one.
+
+Each result carries the game number (`matchId`). The scorekeeper refuses to write the same game number twice, so a game is counted exactly once even when the screen is set up twice by the development safety check or redraws itself after the game is over.
+
+Ranks are awarded by total wins in the session. The four steps—Recruit at 0 wins, Ensign at 1, Captain at 3, Admiral at 6—are defined once in `RANK_THRESHOLDS`, so changing the ladder is a one-line edit. When a win crosses a step, the ledger notes the game number and new rank; the screen turns that into a visible "Promoted to …!" line and a spoken announcement for screen readers, but only while that winning game is still on screen.
+
+The ledger is saved to the browser's session storage after every change and read back when the page loads. Session storage lives as long as the browser tab, so a refresh keeps the scores and closing the tab clears them. Saved data is checked before use; anything that does not look like a ledger is ignored and the scores start fresh. The "already recorded" game number is not restored from storage, because game numbers restart at 1 after a refresh.
 
 ## Terms used in the code
 
@@ -57,5 +73,14 @@ When a game resets, the screen leaves the computer's turn, or the screen closes,
 - **Scorecard:** `Rewards` in `src/game/rewards.ts` — `coins` (total), `series` (`id`, `playerWins`, `aiWins`, `winner`, and `games`, one `GameRecord` per game with `winner`, `forfeit`, `coinsEarned`), `history` (finished series with their games and the coins each earned), and `lastGame` (the game that just ended, used for the announcements).
 - **Scorecard rules:** `recordGameResult` (called by the referee when a game ends), `rewardsAfterForfeit` (called when a game in progress is abandoned), and `rewardsForNextGame` (called on “Play again” and on “New game” after a finished game); the amounts are the constants `COINS_PER_GAME_WIN`, `SERIES_WIN_BONUS`, and `SERIES_WINS_NEEDED` in the same file.
 - **Saving the scorecard:** `src/hooks/rewardsStorage.ts` — `loadRewards` and `saveRewards`, using the session storage key `sach-battleship.rewards.v1`.
+- **Automatic shot when time runs out:** `playerTimeout` — a move the screen sends for the player; the referee accepts it only if it matches the current game and turn. `autoFired` records that the last player shot was automatic so the status line can say so.
+- **Move clock settings:** `GameTimers` — the 5-second move limit (`moveTimeMs`), the computer's shortest and longest pause (`aiMinThinkMs`, `aiMaxThinkMs`) and how often the countdown updates (`tickMs`). Tests pass shorter settings instead of waiting for real seconds.
 - **Public information shown to the computer:** `AiView` — contains shot results and already-sunk ships, not the hidden fleet.
 - **Development safety check:** `Strict Mode` — repeats setup and cleanup to help catch mistakes.
+- **Last placed ship:** `setup.lastPlacement` — which ship was just placed and where, used for the confirmation message.
+- **Fleet complete reason:** `fleet-complete` — the referee's answer when a placement is attempted after every ship is already placed.
+- **Status line text:** `liveMessageForState` — turns the referee's state into the sentence screen readers hear.
+- **Scorekeeper ledger:** `SessionStats` in `src/game/stats.ts` — the session's results; `recordGame` adds one finished game.
+- **Rank ladder:** `RANK_THRESHOLDS` — the wins needed for each rank.
+- **Scorekeeper bridge:** `useSessionStats` in `src/hooks/useSessionStats.ts` — records a game when the referee reports game over and saves the ledger to session storage.
+- **Leaderboard panel:** `Leaderboard` in `src/components/Leaderboard.tsx` — shows the rank, record, streak, best win and recent games.

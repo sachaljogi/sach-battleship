@@ -3,6 +3,7 @@ import { randomFleet } from '../game/placement'
 import { createRng } from '../game/rng'
 import { gameReducer, createInitialState } from '../game/state'
 import type { Rewards } from '../game/rewards'
+import { createInitialStats, recordGame } from '../game/stats'
 import {
   abandonWarningMessage,
   coinTotalMessage,
@@ -11,9 +12,14 @@ import {
   forfeitMessage,
   liveMessageForState,
   placementErrorMessage,
+  placementSuccessMessage,
+  rankUpAnnouncement,
+  rankUpMessage,
   rewardMessage,
   seriesResultMessage,
   seriesScoreMessage,
+  timerMessage,
+  winnerLabel,
 } from './messages'
 
 type SeriesOverride = Partial<Omit<Rewards, 'series'>> & { series?: Partial<Rewards['series']> }
@@ -32,11 +38,17 @@ describe('UI messages', () => {
   it('describes placement errors without duplicating reducer state', () => {
     expect(placementErrorMessage({ reason: 'out-of-bounds', shipId: 'carrier' }))
       .toBe('Carrier would extend off the board.')
+    expect(placementErrorMessage({ reason: 'out-of-bounds', shipId: 'carrier', coord: { row: 0, col: 9 } }))
+      .toBe('Carrier would extend off the board at J1.')
     expect(placementErrorMessage({
       reason: 'overlap',
       shipId: 'battleship',
       conflictingShipId: 'carrier',
-    })).toBe('Battleship would overlap your Carrier.')
+      coord: { row: 0, col: 0 },
+    })).toBe('Battleship would overlap your Carrier at A1.')
+    expect(placementErrorMessage({ reason: 'fleet-complete', coord: { row: 0, col: 0 } }))
+      .toBe('All ships are placed. Press Start game to begin.')
+    expect(placementErrorMessage({ reason: 'no-ship-selected' })).toBe('Select a ship before placing it.')
     expect(placementErrorMessage({ reason: 'already-placed', shipId: 'carrier' }))
       .toBe('Carrier is already placed and locked. Choose Start over to change your fleet.')
 
@@ -46,7 +58,31 @@ describe('UI messages', () => {
       .toBe('Carrier is already placed and locked. Choose Start over to change your fleet.')
 
     const error = gameReducer(createInitialState(), { type: 'placeShip', coord: { row: 9, col: 9 } })
-    expect(liveMessageForState(error)).toBe('Carrier would extend off the board.')
+    expect(liveMessageForState(error)).toBe('Carrier would extend off the board at J10.')
+    const repeated = gameReducer(error, { type: 'placeShip', coord: { row: 9, col: 8 } })
+    expect(liveMessageForState(repeated)).toBe('Carrier would extend off the board at I10.')
+  })
+
+  it('announces successful placements and the completed fleet during setup', () => {
+    const placed = gameReducer(createInitialState(), { type: 'placeShip', coord: { row: 0, col: 0 } })
+    expect(liveMessageForState(placed)).toBe('Carrier placed at A1. Next: Battleship.')
+    expect(placementSuccessMessage(placed)).toBe('Carrier placed at A1. Next: Battleship.')
+
+    const rotated = gameReducer(placed, { type: 'rotate' })
+    expect(liveMessageForState(rotated)).toBe('Set up your fleet.')
+
+    let state = placed
+    for (const row of [1, 2, 3]) {
+      state = gameReducer(state, { type: 'placeShip', coord: { row, col: 0 } })
+    }
+    state = gameReducer(state, { type: 'placeShip', coord: { row: 4, col: 0 } })
+    expect(liveMessageForState(state))
+      .toBe('Destroyer placed at A5. All ships are placed. Press Start game to begin.')
+
+    const randomized = gameReducer(createInitialState(), { type: 'randomizeFleet', ships: randomFleet(createRng(3)) })
+    expect(liveMessageForState(randomized)).toBe('All ships are placed. Press Start game to begin.')
+    const clicked = gameReducer(randomized, { type: 'placeShip', coord: { row: 0, col: 0 } })
+    expect(liveMessageForState(clicked)).toBe('All ships are placed. Press Start game to begin.')
   })
 
   it('describes player and enemy cells using only their public views', () => {
@@ -174,5 +210,55 @@ describe('UI messages', () => {
     )
     expect(forfeitMessage({ ...afterForfeit, phase: 'playerTurn' })).toBeNull()
     expect(forfeitMessage(createInitialState())).toBeNull()
+  })
+
+  it('shows the countdown and announces only the last few seconds of the player turn', () => {
+    const rng = createRng(5)
+    const setup = gameReducer(createInitialState(), { type: 'randomizeFleet', ships: randomFleet(rng) })
+    const playerTurn = gameReducer(setup, { type: 'startGame', enemyShips: randomFleet(rng) })
+
+    expect(timerMessage(playerTurn, { secondsLeft: 5, paused: false }))
+      .toEqual({ label: 'Seconds left to fire', value: '5' })
+    expect(timerMessage(playerTurn, { secondsLeft: 2, paused: true }))
+      .toEqual({ label: 'Seconds left to fire', value: 'paused' })
+    expect(timerMessage(playerTurn, { secondsLeft: null, paused: false })).toBeNull()
+    expect(timerMessage(createInitialState(), { secondsLeft: 5, paused: false })).toBeNull()
+
+    expect(liveMessageForState(playerTurn, { secondsLeft: 5, paused: false }))
+      .toBe('Your turn — fire on Enemy waters')
+    expect(liveMessageForState(playerTurn, { secondsLeft: 4, paused: false }))
+      .toBe('Your turn — fire on Enemy waters')
+    expect(liveMessageForState(playerTurn, { secondsLeft: 3, paused: false })).toBe('3 seconds left.')
+    expect(liveMessageForState(playerTurn, { secondsLeft: 1, paused: false })).toBe('1 second left.')
+    expect(liveMessageForState(playerTurn, { secondsLeft: 2, paused: true }))
+      .toBe('Your turn — fire on Enemy waters')
+
+    const timedOut = gameReducer(playerTurn, {
+      type: 'playerTimeout',
+      coord: { row: 0, col: 0 },
+      matchId: playerTurn.matchId,
+      turnId: playerTurn.turnId,
+    })
+    expect(timerMessage(timedOut, { secondsLeft: 3, paused: false })).toEqual({ label: 'AI fires in', value: '3' })
+    expect(liveMessageForState(timedOut, { secondsLeft: 3, paused: false }))
+      .toContain('Time ran out, so a shot was fired for you at A1:')
+    expect(liveMessageForState(timedOut, { secondsLeft: 3, paused: false })).toContain('AI is thinking...')
+  })
+
+  it('announces a promotion only for the game that earned it', () => {
+    const first = recordGame(createInitialStats(), { matchId: 1, winner: 'player', playerShots: 40, aiShots: 30 })
+    expect(rankUpMessage(createInitialStats())).toBeNull()
+    expect(rankUpMessage(first)).toBe('Promoted to Ensign!')
+    const second = recordGame(first, { matchId: 2, winner: 'player', playerShots: 40, aiShots: 30 })
+    expect(rankUpMessage(second)).toBeNull()
+    const lost = recordGame(first, { matchId: 2, winner: 'ai', playerShots: 40, aiShots: 30 })
+    expect(rankUpMessage(lost)).toBeNull()
+
+    const gameOver = { ...createInitialState(1), phase: 'gameOver' as const, winner: 'player' as const }
+    expect(rankUpAnnouncement(gameOver, first)).toBe('Promoted to Ensign!')
+    expect(rankUpAnnouncement(createInitialState(2), first)).toBeNull()
+    expect(rankUpAnnouncement({ ...gameOver, matchId: 2 }, first)).toBeNull()
+    expect(winnerLabel('player')).toBe('You')
+    expect(winnerLabel('ai')).toBe('AI')
   })
 })

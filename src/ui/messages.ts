@@ -1,34 +1,57 @@
 import { formatCoord } from '../game/coordinates'
 import { currentGameNumber, forfeitWouldDecideSeries, gamesPlayed, SERIES_MAX_GAMES } from '../game/rewards'
+import { isCompleteValidFleet } from '../game/placement'
 import { lastShot } from '../game/state'
-import type { GameState, PlacementError } from '../game/state'
+import type { GameState, PlacementError, Side } from '../game/state'
+import { rankOf, type SessionStats } from '../game/stats'
 import type { CellView, PlayerCellView } from '../game/state'
+import type { TimerView } from '../hooks/useGame'
 import { FLEET, type Coord, type Shot } from '../game/types'
 
 function shipName(id: string | undefined): string | undefined {
   return FLEET.find((ship) => ship.id === id)?.name
 }
 
+export const FLEET_COMPLETE_MESSAGE = 'All ships are placed. Press Start game to begin.'
+
 export function placementErrorMessage(error: PlacementError | null): string | null {
   if (!error) return null
-  const selectedShip = shipName(error.shipId)
+  if (error.reason === 'fleet-complete') return FLEET_COMPLETE_MESSAGE
   if (error.reason === 'no-ship-selected') return 'Select a ship before placing it.'
+  const selectedShip = shipName(error.shipId)
   if (error.reason === 'already-placed') {
     return `${selectedShip ?? 'That ship'} is already placed and locked. Choose Start over to change your fleet.`
   }
-  if (error.reason === 'out-of-bounds') return `${selectedShip ?? 'Ship'} would extend off the board.`
+  const where = error.coord ? ` at ${formatCoord(error.coord)}` : ''
+  if (error.reason === 'out-of-bounds') return `${selectedShip ?? 'Ship'} would extend off the board${where}.`
   const otherShip = shipName(error.conflictingShipId)
   return otherShip
-    ? `${selectedShip ?? 'Ship'} would overlap your ${otherShip}.`
-    : `${selectedShip ?? 'Ship'} would overlap another ship.`
+    ? `${selectedShip ?? 'Ship'} would overlap your ${otherShip}${where}.`
+    : `${selectedShip ?? 'Ship'} would overlap another ship${where}.`
 }
 
-function playerShotText(shot: Shot | null): string | null {
+export function placementSuccessMessage(state: GameState): string | null {
+  const placement = state.setup.lastPlacement
+  if (!placement) return null
+  const placed = `${shipName(placement.shipId) ?? 'Ship'} placed at ${formatCoord(placement.coord)}.`
+  const next = shipName(state.setup.selectedShipId ?? undefined)
+  return next ? `${placed} Next: ${next}.` : `${placed} ${FLEET_COMPLETE_MESSAGE}`
+}
+
+export function setupMessage(state: GameState): string {
+  return placementErrorMessage(state.setup.error)
+    ?? placementSuccessMessage(state)
+    ?? (isCompleteValidFleet(state.setup.ships) ? FLEET_COMPLETE_MESSAGE : 'Set up your fleet.')
+}
+
+function playerShotText(shot: Shot | null, autoFired: boolean): string | null {
   if (!shot) return null
   const result = shot.outcome === 'sunk'
     ? `you sank the enemy ${shipName(shot.sunkShipId) ?? 'ship'}`
     : shot.outcome
-  return `You fired at ${formatCoord(shot.coord)}: ${result}.`
+  return autoFired
+    ? `Time ran out, so a shot was fired for you at ${formatCoord(shot.coord)}: ${result}.`
+    : `You fired at ${formatCoord(shot.coord)}: ${result}.`
 }
 
 function aiShotText(shot: Shot | null): string | null {
@@ -40,7 +63,7 @@ function aiShotText(shot: Shot | null): string | null {
 }
 
 export function latestPlayerShotMessage(state: GameState): string | null {
-  return playerShotText(lastShot(state.enemyBoard))
+  return playerShotText(lastShot(state.enemyBoard), state.autoFired)
 }
 
 export function latestAiShotMessage(state: GameState): string | null {
@@ -109,10 +132,29 @@ export function forfeitMessage(state: GameState): string | null {
   return `${intro} Series: You ${series.playerWins} – AI ${series.aiWins}. Next up: game ${currentGameNumber(series)} of ${SERIES_MAX_GAMES}.`
 }
 
-export function liveMessageForState(state: GameState): string {
+export const ANNOUNCE_LAST_SECONDS = 3
+
+export function timerMessage(state: GameState, timer: TimerView): { label: string; value: string } | null {
+  if (timer.secondsLeft === null) return null
+  if (state.phase === 'playerTurn') {
+    return { label: 'Seconds left to fire', value: timer.paused ? 'paused' : String(timer.secondsLeft) }
+  }
+  if (state.phase === 'aiTurn') {
+    return { label: 'AI fires in', value: timer.paused ? 'paused' : String(timer.secondsLeft) }
+  }
+  return null
+}
+
+function countdownAnnouncement(state: GameState, timer?: TimerView): string | null {
+  if (!timer || timer.paused || timer.secondsLeft === null || state.phase !== 'playerTurn') return null
+  if (timer.secondsLeft > ANNOUNCE_LAST_SECONDS || timer.secondsLeft <= 0) return null
+  return timer.secondsLeft === 1 ? '1 second left.' : `${timer.secondsLeft} seconds left.`
+}
+
+export function liveMessageForState(state: GameState, timer?: TimerView): string {
   if (state.phase === 'setup') {
     return placementErrorMessage(state.setup.error)
-      ?? [forfeitMessage(state), 'Set up your fleet.'].filter(Boolean).join(' ')
+      ?? [forfeitMessage(state), setupMessage(state)].filter(Boolean).join(' ')
   }
   const playerShot = latestPlayerShotMessage(state)
   const aiShot = latestAiShotMessage(state)
@@ -123,7 +165,23 @@ export function liveMessageForState(state: GameState): string {
     const winner = state.winner === 'player' ? 'You win!' : 'The AI wins.'
     return [winner, rewardMessage(state), seriesResultMessage(state), playerShot, aiShot].filter(Boolean).join(' ')
   }
-  return [aiShot, 'Your turn — fire on Enemy waters'].filter(Boolean).join(' ')
+  const countdown = countdownAnnouncement(state, timer)
+  return countdown ?? [aiShot, 'Your turn — fire on Enemy waters'].filter(Boolean).join(' ')
+}
+
+export function winnerLabel(winner: Side): string {
+  return winner === 'player' ? 'You' : 'AI'
+}
+
+export function rankUpMessage(stats: SessionStats): string | null {
+  const rankUp = stats.lastRankUp
+  if (!rankUp || rankUp.game !== stats.gamesPlayed || rankUp.rank !== rankOf(stats)) return null
+  return `Promoted to ${rankUp.rank}!`
+}
+
+export function rankUpAnnouncement(state: GameState, stats: SessionStats): string | null {
+  if (state.phase !== 'gameOver' || stats.lastRecordedMatchId !== state.matchId) return null
+  return rankUpMessage(stats)
 }
 
 export function describePlayerCell(coord: Coord, cell: PlayerCellView): string {
