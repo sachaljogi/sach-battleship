@@ -8,6 +8,9 @@ import type { CellView, PlayerCellView } from '../game/state'
 import type { TimerView } from '../hooks/useGame'
 import { FLEET, type Coord, type Shot } from '../game/types'
 
+export const PLAYER_BOARD_NAME = 'Greyhound'
+export const ENEMY_BOARD_NAME = 'Grey Wolf'
+
 function shipName(id: string | undefined): string | undefined {
   return FLEET.find((ship) => ship.id === id)?.name
 }
@@ -71,7 +74,7 @@ export function latestAiShotMessage(state: GameState): string | null {
 }
 
 export function turnMessage(state: GameState): string {
-  if (state.phase === 'playerTurn') return 'Your turn — fire on Enemy waters'
+  if (state.phase === 'playerTurn') return `Your turn — fire on ${ENEMY_BOARD_NAME}`
   if (state.phase === 'aiTurn') return 'AI is thinking...'
   if (state.phase === 'gameOver') return state.winner === 'player' ? 'You win!' : 'The AI wins.'
   return 'Set up your fleet.'
@@ -166,7 +169,7 @@ export function liveMessageForState(state: GameState, timer?: TimerView): string
     return [winner, rewardMessage(state), seriesResultMessage(state), playerShot, aiShot].filter(Boolean).join(' ')
   }
   const countdown = countdownAnnouncement(state, timer)
-  return countdown ?? [aiShot, 'Your turn — fire on Enemy waters'].filter(Boolean).join(' ')
+  return countdown ?? [aiShot, `Your turn — fire on ${ENEMY_BOARD_NAME}`].filter(Boolean).join(' ')
 }
 
 export function winnerLabel(winner: Side): string {
@@ -185,7 +188,7 @@ export function rankUpAnnouncement(state: GameState, stats: SessionStats): strin
 }
 
 export function describePlayerCell(coord: Coord, cell: PlayerCellView): string {
-  const position = `Your fleet, ${formatCoord(coord)}`
+  const position = `${PLAYER_BOARD_NAME}, ${formatCoord(coord)}`
   if (cell.state === 'ship') return `${position}, ${cell.shipName ?? 'ship'}`
   if (cell.state === 'hit') return `${position}, ${cell.shipName ?? 'ship'}, hit`
   if (cell.state === 'sunk') return `${position}, ${cell.shipName ?? 'ship'}, sunk`
@@ -195,7 +198,7 @@ export function describePlayerCell(coord: Coord, cell: PlayerCellView): string {
 }
 
 export function describeEnemyCell(coord: Coord, cell: CellView): string {
-  const position = `Enemy waters, ${formatCoord(coord)}`
+  const position = `${ENEMY_BOARD_NAME}, ${formatCoord(coord)}`
   if (cell.state === 'untried') return `${position}, untried`
   if (cell.state === 'miss') return `${position}, miss`
   if (cell.state === 'hit') return `${position}, hit`

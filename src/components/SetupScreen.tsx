@@ -9,6 +9,7 @@ import { playerCellViews, type GameState } from '../game/state'
 import type { PreviewCell } from './Board'
 import type { GameActions } from '../hooks/useGame'
 import {
+  PLAYER_BOARD_NAME,
   FLEET_COMPLETE_MESSAGE,
   describePlayerCell,
   forfeitMessage,
@@ -72,7 +73,7 @@ export default function SetupScreen({ state, actions }: SetupScreenProps) {
       </ul>
 
       <section className="fleet-setup" aria-labelledby="fleet-heading">
-        <h2 id="fleet-heading">Your fleet</h2>
+        <h2 id="fleet-heading">{PLAYER_BOARD_NAME}</h2>
         <ul className="fleet-list">
           {FLEET.map((ship) => {
             const placed = state.setup.ships.some((candidateShip) => candidateShip.id === ship.id)
@@ -104,7 +105,7 @@ export default function SetupScreen({ state, actions }: SetupScreenProps) {
       <section className="setup-board-section" aria-labelledby="placement-heading">
         <h2 id="placement-heading">Place your fleet</h2>
         <Board
-          label="Your fleet"
+          label={PLAYER_BOARD_NAME}
           cells={playerCellViews(state)}
           describeCell={describePlayerCell}
           symbolFor={symbolForCell}
