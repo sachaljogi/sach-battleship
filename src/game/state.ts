@@ -39,7 +39,7 @@ export type Action =
   | { type: 'startGame'; enemyShips: PlacedShip[] }
   | { type: 'playerFire'; coord: Coord }
   | { type: 'playerTimeout'; coord: Coord; matchId: number; turnId: number }
-  | { type: 'aiFire'; coord: Coord; matchId: number; turnId: number }
+  | { type: 'aiFire'; coord: Coord | null; matchId: number; turnId: number }
   | { type: 'playAgain' }
   | { type: 'newGame' }
 
@@ -84,6 +84,15 @@ function applyPlayerShot(state: GameState, coord: Coord, autoFired: boolean): Ga
     winner: won ? 'player' : null,
     autoFired,
   }
+}
+
+function warnDev(message: string): void {
+  if (import.meta.env.DEV) console.warn(`[battleship] ${message}`)
+}
+
+export function firstUntriedCoord(board: Board): Coord | null {
+  const tried = new Set(board.shots.map((shot) => coordKey(shot.coord)))
+  return allCoords(BOARD_SIZE).find((coord) => !tried.has(coordKey(coord))) ?? null
 }
 
 export function gameReducer(state: GameState, action: Action): GameState {
@@ -185,8 +194,14 @@ export function gameReducer(state: GameState, action: Action): GameState {
       if (state.phase !== 'aiTurn' || action.matchId !== state.matchId || action.turnId !== state.turnId) {
         return state
       }
-      const result = fireAt(state.playerBoard, action.coord)
-      if (!result.ok) return state
+      let result = action.coord ? fireAt(state.playerBoard, action.coord) : null
+      if (!result?.ok) {
+        const fallback = firstUntriedCoord(state.playerBoard)
+        warnDev(`AI shot ${action.coord ? `at ${coordKey(action.coord)}` : 'missing'} was rejected `
+          + `(${result ? result.reason : 'no-shot'}); ${fallback ? `firing at ${coordKey(fallback)} instead` : 'no untried cell left, returning the turn'}`)
+        result = fallback ? fireAt(state.playerBoard, fallback) : null
+      }
+      if (!result?.ok) return { ...state, turnId: state.turnId + 1, phase: 'playerTurn' }
       const lost = isFleetSunk(result.board)
       return {
         ...state,

@@ -5,6 +5,7 @@ import { createRng, type Rng } from '../game/rng'
 import {
   aiViewFromBoard,
   createInitialState,
+  firstUntriedCoord,
   gameReducer,
   lastShot,
   scheduledAiTurn,
@@ -94,9 +95,9 @@ export function useGame(rng: Rng, timers: GameTimers = DEFAULT_TIMERS): UseGameR
     const timeout = setTimeout(() => {
       if (side === 'ai') {
         const coord = chooseAiShot(aiViewFromBoard(playerBoard), rng)
-        if (coord) dispatch({ type: 'aiFire', coord, matchId, turnId })
+        dispatch({ type: 'aiFire', coord, matchId, turnId })
       } else {
-        const coord = chooseAiShot(aiViewFromBoard(enemyBoard), rng)
+        const coord = chooseAiShot(aiViewFromBoard(enemyBoard), rng) ?? firstUntriedCoord(enemyBoard)
         if (coord) dispatch({ type: 'playerTimeout', coord, matchId, turnId })
       }
     }, remainingMs)
