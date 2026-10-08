@@ -56,7 +56,7 @@ function enemyCell(coord: Coord): HTMLElement {
 }
 
 function statusPanel(): HTMLElement {
-  return screen.getByRole('region', { name: 'Game status' })
+  return screen.getByRole('region', { name: 'Let the Games Begin!' })
 }
 
 function countShots(grid: HTMLElement): number {
