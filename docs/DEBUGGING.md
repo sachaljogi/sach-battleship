@@ -76,6 +76,14 @@ This page records defects encountered while building the game. It does not claim
 - **Fix:** Request an asset directly when the browser response map has no matching entry, then assert its status.
 - **Verification:** The passing `e2e/smoke.spec.ts` checks every asset URL and status.
 
+### Completed fleet showed a "Select a ship" error
+
+- **Symptom:** After Randomize (or placing the last ship), clicking any fleet square showed "Select a ship before placing it." even though every ship was already placed. Screen readers also never heard successful placements, and a repeated identical error was not read out again because the status text did not change.
+- **Expected behavior:** A completed fleet should not accept placements or report a misleading error; placements and distinct errors should be announced.
+- **Cause:** `selectedShipId` becomes `null` once the fleet is complete, but `SetupScreen` passed `canActivate={() => true}`, so clicks still dispatched `placeShip`, which only knew the `no-ship-selected` reason. `liveMessageForState` fell back to "Set up your fleet." after a success and produced identical text for repeated errors.
+- **Fix:** Make fleet cells non-activatable when no ship is selected, add a `fleet-complete` reducer reason with the message "All ships are placed. Press Start game to begin.", record `setup.lastPlacement` so successes are announced ("Carrier placed at A1. Next: Battleship."), and include the square in error messages ("Carrier would extend off the board at J1.").
+- **Verification:** `npm test` — reducer tests in `src/game/__tests__/state.test.ts`, message tests in `src/ui/messages.test.ts`, and the status-region component test in `src/components/__tests__/App.test.tsx`.
+
 ### Game could silently stall on "AI is thinking..."
 
 - **Symptom:** After the player fired, the screen stayed on "AI is thinking..." forever; nothing was logged and only New game recovered.
@@ -83,6 +91,14 @@ This page records defects encountered while building the game. It does not claim
 - **Cause:** The delayed computer move only dispatched when the AI picked a square, and the referee returned the same state when that square was rejected (already used or off the board). With nothing changed, no new delayed move was scheduled. An `Rng` returning 1 or `NaN` made `randomInt` produce an out-of-range index, so `pick` returned `undefined` and the AI picked nothing.
 - **Fix:** The referee now treats a rejected or missing computer shot as "fire at the first untried square" (deterministic, no randomness inside the reducer); if no untried square remains it hands the turn back to the player. `randomInt` clamps every result into range, so bad random numbers cannot produce holes in `shuffle` or an `undefined` pick. In development builds the referee logs a `console.warn` whenever a computer shot is rejected so the fallback is visible.
 - **Verification:** Reducer tests for repeated, out-of-bounds, and missing AI shots; rng tests for `() => 1` and `() => NaN`; component tests that render `<App rng={() => 1} />` and `<App rng={() => NaN} />` and check that "AI is thinking..." clears after the delay. `npm test`.
+
+### Setup placement preview stuck to the clicked cell
+
+- **Symptom:** After clicking a cell to place a ship and moving the mouse off the board, the preview stayed anchored to the clicked cell and showed the next ship in red as "doesn't fit — overlaps …" in Chromium and Firefox, but not in Safari.
+- **Expected behavior:** Leaving the board clears the preview unless the player is navigating with the keyboard, and a successful placement never leaves an invalid preview behind.
+- **Cause:** Chromium and Firefox focus a button when it is clicked; Safari does not. The board's mouse-leave handler fell back to the focused cell, so the click's focus kept the preview alive. The four handlers also read hover and focus values from the render closure, so a focus change and a mouse-leave in the same tick could restore a stale anchor.
+- **Fix:** Derive one preview anchor from state (`hoveredCoord`, else the focused cell only when focus arrived by keyboard) and send it to the parent from a single effect. Activating a cell clears the preview until the next real hover or keyboard move.
+- **Verification:** `npm test` (App component test covering hover, click, unhover, arrow keys, Enter and Tab) and `e2e/setup-preview.spec.ts` in headless Chromium.
 
 ## Verification summary
 
