@@ -12,6 +12,9 @@ export function placementErrorMessage(error: PlacementError | null): string | nu
   if (!error) return null
   const selectedShip = shipName(error.shipId)
   if (error.reason === 'no-ship-selected') return 'Select a ship before placing it.'
+  if (error.reason === 'already-placed') {
+    return `${selectedShip ?? 'That ship'} is already placed and locked. Choose Start over to change your fleet.`
+  }
   if (error.reason === 'out-of-bounds') return `${selectedShip ?? 'Ship'} would extend off the board.`
   const otherShip = shipName(error.conflictingShipId)
   return otherShip

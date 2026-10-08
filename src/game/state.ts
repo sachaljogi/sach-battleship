@@ -8,7 +8,7 @@ export type Phase = 'setup' | 'playerTurn' | 'aiTurn' | 'gameOver'
 export type Side = 'player' | 'ai'
 
 export interface PlacementError {
-  reason: 'out-of-bounds' | 'overlap' | 'no-ship-selected'
+  reason: 'out-of-bounds' | 'overlap' | 'no-ship-selected' | 'already-placed'
   shipId?: ShipId
   conflictingShipId?: ShipId
   coord?: Coord
@@ -69,6 +69,10 @@ export function createInitialState(matchId = 1): GameState {
 
 const clearError = (state: GameState): GameState['setup'] => ({ ...state.setup, error: null })
 
+const isPlaced = (state: GameState, shipId: ShipId): boolean => (
+  state.setup.ships.some((ship) => ship.id === shipId)
+)
+
 function warnDev(message: string): void {
   if (import.meta.env.DEV) console.warn(`[battleship] ${message}`)
 }
@@ -82,6 +86,12 @@ export function gameReducer(state: GameState, action: Action): GameState {
   switch (action.type) {
     case 'selectShip': {
       if (state.phase !== 'setup') return state
+      if (isPlaced(state, action.shipId)) {
+        return {
+          ...state,
+          setup: { ...state.setup, error: { reason: 'already-placed', shipId: action.shipId } },
+        }
+      }
       return { ...state, setup: { ...clearError(state), selectedShipId: action.shipId } }
     }
     case 'rotate': {
@@ -101,6 +111,12 @@ export function gameReducer(state: GameState, action: Action): GameState {
         return {
           ...state,
           setup: { ...state.setup, error: { reason: 'no-ship-selected', coord: action.coord } },
+        }
+      }
+      if (isPlaced(state, shipId)) {
+        return {
+          ...state,
+          setup: { ...state.setup, error: { reason: 'already-placed', shipId, coord: { ...action.coord } } },
         }
       }
       const result = placeShip(state.setup.ships, {
@@ -129,7 +145,9 @@ export function gameReducer(state: GameState, action: Action): GameState {
       }
     }
     case 'randomizeFleet': {
-      if (state.phase !== 'setup' || !isCompleteValidFleet(action.ships)) return state
+      if (state.phase !== 'setup' || state.setup.ships.length > 0 || !isCompleteValidFleet(action.ships)) {
+        return state
+      }
       return {
         ...state,
         setup: {
@@ -140,11 +158,8 @@ export function gameReducer(state: GameState, action: Action): GameState {
       }
     }
     case 'clearBoard': {
-      if (state.phase !== 'setup') return state
-      return {
-        ...state,
-        setup: { ...clearError(state), ships: [], selectedShipId: FLEET[0]!.id },
-      }
+      if (state.phase !== 'setup' || state.setup.ships.length === 0) return state
+      return createInitialState(state.matchId + 1)
     }
     case 'startGame': {
       if (state.phase !== 'setup'
