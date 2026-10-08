@@ -275,6 +275,79 @@ h1 {
   font-weight: 800;
 }
 
+.leaderboard {
+  margin: 1.5rem 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid #9aaaba;
+  border-radius: 0.5rem;
+  background: #fff;
+}
+
+.leaderboard h2 {
+  margin-top: 0.2rem;
+}
+
+.leaderboard-compact {
+  padding: 0.5rem 1rem;
+}
+
+.leaderboard-compact h2 {
+  font-size: 1.05rem;
+}
+
+.leaderboard-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  margin: 0.5rem 0;
+}
+
+.leaderboard-summary div {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.leaderboard-summary dt {
+  font-weight: 700;
+}
+
+.leaderboard-summary dt::after {
+  content: ":";
+}
+
+.leaderboard-summary dd {
+  margin: 0;
+}
+
+.rank-up {
+  color: #13723d;
+  font-weight: 800;
+}
+
+.recent-games {
+  width: 100%;
+  max-width: 32rem;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+
+.recent-games caption {
+  text-align: left;
+  font-weight: 700;
+  padding-bottom: 0.35rem;
+}
+
+.recent-games th,
+.recent-games td {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid #c3cdd7;
+  text-align: left;
+}
+
+.recent-games thead th {
+  background: #e3edf6;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;

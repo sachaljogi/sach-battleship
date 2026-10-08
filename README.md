@@ -10,6 +10,16 @@ Place all five ships on your 10×10 fleet board. Ships may touch, but cannot ove
 
 While you set up, the game tells you what just happened: each placed ship is confirmed (for example "Carrier placed at A1. Next: Battleship."), and a placement that does not fit names the square you chose. Once all five ships are on the board, the board stops accepting clicks and the message changes to "All ships are placed. Press Start game to begin." Placed ships are locked; to rearrange them, choose Start over.
 
+## Session leaderboard
+
+Under the game, a "Session leaderboard" panel keeps score for as long as the browser tab stays open. It shows:
+
+- **Rank** — Recruit (no wins yet), Ensign (1 win), Captain (3 wins), Admiral (6 wins). The thresholds live in one place in the code (`RANK_THRESHOLDS` in `src/game/stats.ts`). When a win earns a new rank, the panel shows "Promoted to …!" and a screen reader hears the same message.
+- **Record (W–L)**, **win streak** (consecutive wins; a loss resets it to 0), **win rate**, and **best win** (the fewest shots you needed to win).
+- A table of the five most recent games: game number, who won, and how many shots each side fired.
+
+During a battle the panel shrinks to the rank, record and streak so it does not crowd the boards. The scores are saved in the browser's `sessionStorage`, so they survive a page refresh but are cleared when the tab is closed. Abandoning a game with "New game" does not count as a loss; only finished games are recorded.
+
 ## Requirements
 
 - Node.js 24, as selected by `.nvmrc`
@@ -50,8 +60,8 @@ The Vite base path is `/sach-battleship/`. While `npm run preview` is running on
 
 ## Project structure
 
-- `src/game/` — deterministic placement, shots, AI, and reducer
-- `src/hooks/` — React game state and delayed AI turn
+- `src/game/` — deterministic placement, shots, AI, reducer, and session stats
+- `src/hooks/` — React game state, delayed AI turn, and leaderboard persistence
 - `src/components/` — accessible setup, board, and battle screens
 - `src/ui/` — user-facing cell and status messages
 - `src/**/__tests__/` — engine, reducer, and component tests
@@ -68,7 +78,7 @@ GitHub Actions runs typecheck, lint, unit tests, build, and a Chromium smoke tes
 
 ## Known limitations
 
-- Games are not saved; refreshing the page returns to fleet setup.
+- Games in progress are not saved; refreshing the page returns to fleet setup. The session leaderboard is kept for the life of the browser tab only.
 - During setup, a ship stays where you put it. Once any ship is placed, Randomize is switched off and the only way to rearrange the fleet is "Start over", which begins a brand-new game.
 - The game is single-player against the AI; there is no online multiplayer.
 - The AI uses a hunt-and-target heuristic, not probability-density search.

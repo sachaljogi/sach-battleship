@@ -2,12 +2,16 @@ import { describe, expect, it } from 'vitest'
 import { randomFleet } from '../game/placement'
 import { createRng } from '../game/rng'
 import { gameReducer, createInitialState } from '../game/state'
+import { createInitialStats, recordGame } from '../game/stats'
 import {
   describeEnemyCell,
   describePlayerCell,
   liveMessageForState,
   placementErrorMessage,
   placementSuccessMessage,
+  rankUpAnnouncement,
+  rankUpMessage,
+  winnerLabel,
 } from './messages'
 
 describe('UI messages', () => {
@@ -95,5 +99,22 @@ describe('UI messages', () => {
 
     const gameOver = { ...playerTurn, phase: 'gameOver' as const, winner: 'player' as const }
     expect(liveMessageForState(gameOver)).toContain('You win!')
+  })
+
+  it('announces a promotion only for the game that earned it', () => {
+    const first = recordGame(createInitialStats(), { matchId: 1, winner: 'player', playerShots: 40, aiShots: 30 })
+    expect(rankUpMessage(createInitialStats())).toBeNull()
+    expect(rankUpMessage(first)).toBe('Promoted to Ensign!')
+    const second = recordGame(first, { matchId: 2, winner: 'player', playerShots: 40, aiShots: 30 })
+    expect(rankUpMessage(second)).toBeNull()
+    const lost = recordGame(first, { matchId: 2, winner: 'ai', playerShots: 40, aiShots: 30 })
+    expect(rankUpMessage(lost)).toBeNull()
+
+    const gameOver = { ...createInitialState(1), phase: 'gameOver' as const, winner: 'player' as const }
+    expect(rankUpAnnouncement(gameOver, first)).toBe('Promoted to Ensign!')
+    expect(rankUpAnnouncement(createInitialState(2), first)).toBeNull()
+    expect(rankUpAnnouncement({ ...gameOver, matchId: 2 }, first)).toBeNull()
+    expect(winnerLabel('player')).toBe('You')
+    expect(winnerLabel('ai')).toBe('AI')
   })
 })

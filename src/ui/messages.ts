@@ -1,7 +1,8 @@
 import { formatCoord } from '../game/coordinates'
 import { isCompleteValidFleet } from '../game/placement'
 import { lastShot } from '../game/state'
-import type { GameState, PlacementError } from '../game/state'
+import type { GameState, PlacementError, Side } from '../game/state'
+import { rankOf, type SessionStats } from '../game/stats'
 import type { CellView, PlayerCellView } from '../game/state'
 import { FLEET, type Coord, type Shot } from '../game/types'
 
@@ -84,6 +85,21 @@ export function liveMessageForState(state: GameState): string {
     return [winner, playerShot, aiShot].filter(Boolean).join(' ')
   }
   return [aiShot, 'Your turn — fire on Enemy waters'].filter(Boolean).join(' ')
+}
+
+export function winnerLabel(winner: Side): string {
+  return winner === 'player' ? 'You' : 'AI'
+}
+
+export function rankUpMessage(stats: SessionStats): string | null {
+  const rankUp = stats.lastRankUp
+  if (!rankUp || rankUp.game !== stats.gamesPlayed || rankUp.rank !== rankOf(stats)) return null
+  return `Promoted to ${rankUp.rank}!`
+}
+
+export function rankUpAnnouncement(state: GameState, stats: SessionStats): string | null {
+  if (state.phase !== 'gameOver' || stats.lastRecordedMatchId !== state.matchId) return null
+  return rankUpMessage(stats)
 }
 
 export function describePlayerCell(coord: Coord, cell: PlayerCellView): string {
