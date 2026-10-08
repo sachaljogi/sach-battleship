@@ -87,17 +87,17 @@ describe('UI messages', () => {
 
   it('describes player and enemy cells using only their public views', () => {
     expect(describeEnemyCell({ row: 6, col: 2 }, { state: 'untried' }))
-      .toBe('Enemy waters, C7, untried')
+      .toBe('Grey Wolf, C7, untried')
     expect(describeEnemyCell({ row: 6, col: 2 }, { state: 'hit' }))
-      .toBe('Enemy waters, C7, hit')
+      .toBe('Grey Wolf, C7, hit')
     expect(describeEnemyCell({ row: 6, col: 2 }, { state: 'sunk', shipName: 'Cruiser' }))
-      .toBe('Enemy waters, C7, sunk Cruiser')
+      .toBe('Grey Wolf, C7, sunk Cruiser')
     expect(describePlayerCell({ row: 0, col: 0 }, { state: 'ship', shipName: 'Carrier' }))
-      .toBe('Your fleet, A1, Carrier')
+      .toBe('Greyhound, A1, Carrier')
     expect(describePlayerCell({ row: 0, col: 0 }, { state: 'hit', shipName: 'Carrier' }))
-      .toBe('Your fleet, A1, Carrier, hit')
+      .toBe('Greyhound, A1, Carrier, hit')
     expect(describePlayerCell({ row: 0, col: 0 }, { state: 'untried' }))
-      .toBe('Your fleet, A1, empty')
+      .toBe('Greyhound, A1, empty')
   })
 
   it('announces the current phase and winner from reducer state', () => {
@@ -111,7 +111,7 @@ describe('UI messages', () => {
       type: 'startGame',
       enemyShips: randomFleet(rng),
     })
-    expect(liveMessageForState(playerTurn)).toBe('Your turn — fire on Enemy waters')
+    expect(liveMessageForState(playerTurn)).toBe('Your turn — fire on Grey Wolf')
 
     const aiTurn = gameReducer(playerTurn, { type: 'playerFire', coord: { row: 0, col: 0 } })
     expect(liveMessageForState(aiTurn)).toContain('AI is thinking...')
@@ -225,13 +225,13 @@ describe('UI messages', () => {
     expect(timerMessage(createInitialState(), { secondsLeft: 5, paused: false })).toBeNull()
 
     expect(liveMessageForState(playerTurn, { secondsLeft: 5, paused: false }))
-      .toBe('Your turn — fire on Enemy waters')
+      .toBe('Your turn — fire on Grey Wolf')
     expect(liveMessageForState(playerTurn, { secondsLeft: 4, paused: false }))
-      .toBe('Your turn — fire on Enemy waters')
+      .toBe('Your turn — fire on Grey Wolf')
     expect(liveMessageForState(playerTurn, { secondsLeft: 3, paused: false })).toBe('3 seconds left.')
     expect(liveMessageForState(playerTurn, { secondsLeft: 1, paused: false })).toBe('1 second left.')
     expect(liveMessageForState(playerTurn, { secondsLeft: 2, paused: true }))
-      .toBe('Your turn — fire on Enemy waters')
+      .toBe('Your turn — fire on Grey Wolf')
 
     const timedOut = gameReducer(playerTurn, {
       type: 'playerTimeout',

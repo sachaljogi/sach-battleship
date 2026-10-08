@@ -29,8 +29,8 @@ test('production app supports a complete smoke flow under its Pages base path', 
 
   await page.getByRole('button', { name: 'Randomize' }).click()
   await page.getByRole('button', { name: 'Start game' }).click()
-  const enemyGrid = page.getByRole('grid', { name: 'Enemy waters' })
-  const playerGrid = page.getByRole('grid', { name: 'Your fleet' })
+  const enemyGrid = page.getByRole('grid', { name: 'Grey Wolf' })
+  const playerGrid = page.getByRole('grid', { name: 'Greyhound' })
   const status = page.getByRole('status')
   const timer = page.getByRole('timer')
   await expect(timer).toContainText('Seconds left to fire')

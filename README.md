@@ -104,3 +104,7 @@ GitHub Actions runs typecheck, lint, unit tests, build, and a Chromium smoke tes
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## Credits
+
+The favicon is cropped and resized from ["Tom Hanks face"](https://commons.wikimedia.org/wiki/File:Tom_Hanks_face.jpg) by Angela George ([Flickr](https://www.flickr.com/photos/sharongraphics/)), via Wikimedia Commons, licensed under [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/). The cropped favicon is shared under the same license.

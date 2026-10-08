@@ -8,7 +8,7 @@ export default function StatusPanel({ state, timer }: { state: GameState; timer:
   const countdown = timerMessage(state, timer)
   return (
     <section className="status-panel" aria-labelledby="status-heading">
-      <h2 id="status-heading">Game status</h2>
+      <h2 id="status-heading">Let the Games Begin!</h2>
       <p className="turn-status">{turnMessage(state)}</p>
       {countdown && (
         <p className="move-timer" role="timer" data-urgent={timer.secondsLeft !== null && timer.secondsLeft <= 3}>

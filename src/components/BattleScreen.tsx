@@ -3,6 +3,8 @@ import Board from './Board'
 import Legend from './Legend'
 import StatusPanel from './StatusPanel'
 import {
+  ENEMY_BOARD_NAME,
+  PLAYER_BOARD_NAME,
   abandonWarningMessage,
   describeEnemyCell,
   describePlayerCell,
@@ -79,9 +81,9 @@ export default function BattleScreen({ state, timer, actions }: BattleScreenProp
 
       <div className="boards-layout">
         <section aria-labelledby="player-board-heading" className="battle-board">
-          <h2 id="player-board-heading">Your fleet</h2>
+          <h2 id="player-board-heading">{PLAYER_BOARD_NAME}</h2>
           <Board
-            label="Your fleet"
+            label={PLAYER_BOARD_NAME}
             cells={playerCellViews(state)}
             describeCell={describePlayerCell}
             symbolFor={symbolForCell}
@@ -90,9 +92,9 @@ export default function BattleScreen({ state, timer, actions }: BattleScreenProp
           />
         </section>
         <section aria-labelledby="enemy-board-heading" className="battle-board">
-          <h2 id="enemy-board-heading">Enemy waters</h2>
+          <h2 id="enemy-board-heading">{ENEMY_BOARD_NAME}</h2>
           <Board
-            label="Enemy waters"
+            label={ENEMY_BOARD_NAME}
             cells={enemyCells}
             describeCell={describeEnemyCell}
             symbolFor={symbolForCell}

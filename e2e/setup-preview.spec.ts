@@ -2,10 +2,10 @@ import { expect, test } from '@playwright/test'
 
 test('placement preview clears when the mouse leaves the board after a click', async ({ page }) => {
   await page.goto('./')
-  const fleetGrid = page.getByRole('grid', { name: 'Your fleet' })
+  const fleetGrid = page.getByRole('grid', { name: 'Greyhound' })
   const previewMessage = page.locator('.preview-message')
   const idleMessage = 'Hover over or focus a cell to preview placement.'
-  const cell = (label: string) => fleetGrid.getByRole('gridcell', { name: new RegExp(`^Your fleet, ${label},`) })
+  const cell = (label: string) => fleetGrid.getByRole('gridcell', { name: new RegExp(`^Greyhound, ${label},`) })
 
   await cell('A1').hover()
   await expect(previewMessage).toHaveText('Carrier at A1, horizontal: fits')

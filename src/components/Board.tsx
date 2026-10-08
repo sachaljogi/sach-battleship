@@ -3,6 +3,7 @@ import type { KeyboardEvent } from 'react'
 import { COLUMN_LABELS, coordKey, formatCoord } from '../game/coordinates'
 import type { Coord } from '../game/types'
 import type { CellView, PlayerCellView } from '../game/state'
+import { ENEMY_BOARD_NAME, PLAYER_BOARD_NAME } from '../ui/messages'
 
 export interface PreviewCell {
   coord: Coord
@@ -10,7 +11,7 @@ export interface PreviewCell {
 }
 
 interface BoardProps<Cell extends CellView | PlayerCellView> {
-  label: 'Your fleet' | 'Enemy waters'
+  label: typeof PLAYER_BOARD_NAME | typeof ENEMY_BOARD_NAME
   cells: readonly Cell[][]
   describeCell: (coord: Coord, cell: Cell) => string
   symbolFor: (cell: Cell) => string
