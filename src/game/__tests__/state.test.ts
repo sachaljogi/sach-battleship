@@ -198,6 +198,33 @@ describe('game reducer', () => {
     expect(setup.setup.ships).toBe(ships)
   })
 
+  it('reports fleet-complete instead of no-ship-selected once every ship is placed', () => {
+    const randomized = gameReducer(createInitialState(), { type: 'randomizeFleet', ships: fleet(8) })
+    expect(randomized.setup.selectedShipId).toBeNull()
+    const clicked = gameReducer(randomized, { type: 'placeShip', coord: { row: 3, col: 4 } })
+    expect(clicked.setup.error).toEqual({ reason: 'fleet-complete', coord: { row: 3, col: 4 } })
+    expect(clicked.setup.ships).toBe(randomized.setup.ships)
+    expect(clicked.setup.lastPlacement).toBeNull()
+
+    const partial = gameReducer(createInitialState(), { type: 'placeShip', coord: { row: 0, col: 0 } })
+    const unselected = { ...partial, setup: { ...partial.setup, selectedShipId: null } }
+    const noShip = gameReducer(unselected, { type: 'placeShip', coord: { row: 5, col: 5 } })
+    expect(noShip.setup.error).toEqual({ reason: 'no-ship-selected', coord: { row: 5, col: 5 } })
+  })
+
+  it('records the last successful placement and clears it on the next setup action', () => {
+    const placed = gameReducer(createInitialState(), { type: 'placeShip', coord: { row: 0, col: 0 } })
+    expect(placed.setup.lastPlacement).toEqual({ shipId: 'carrier', coord: { row: 0, col: 0 } })
+    expect(placed.setup.selectedShipId).toBe('battleship')
+    expect(gameReducer(placed, { type: 'rotate' }).setup.lastPlacement).toBeNull()
+    expect(gameReducer(placed, { type: 'selectShip', shipId: 'battleship' }).setup.lastPlacement).toBeNull()
+    expect(gameReducer(placed, { type: 'selectShip', shipId: 'carrier' }).setup.lastPlacement).toBeNull()
+    expect(gameReducer(placed, { type: 'clearBoard' }).setup.lastPlacement).toBeNull()
+    const failed = gameReducer(placed, { type: 'placeShip', coord: { row: 0, col: 0 } })
+    expect(failed.setup.error?.reason).toBe('overlap')
+    expect(failed.setup.lastPlacement).toBeNull()
+  })
+
   it('clears setup errors on success and locks placed ships against re-placement', () => {
     let state = gameReducer(createInitialState(), { type: 'placeShip', coord: { row: 9, col: 9 } })
     state = gameReducer(state, { type: 'placeShip', coord: { row: 0, col: 0 } })

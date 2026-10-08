@@ -4,12 +4,16 @@ Behind the screen, a rules engine—the referee—decides which moves are allowe
 
 ## The four parts of a game
 
-1. **Set up the fleet.** Place all five ships yourself or let the game arrange them. Play cannot start until every ship is placed. A ship is locked the moment it is placed: its entry in the fleet list is greyed out, and the referee refuses any attempt to move it. “Randomize” only works while the board is still empty. To rearrange ships you press “Start over”, which the referee treats as a new game (the game number changes), so nothing from the half-finished setup carries over.
+1. **Set up the fleet.** Place all five ships yourself or let the game arrange them. Play cannot start until every ship is placed. A ship is locked the moment it is placed: its entry in the fleet list is greyed out, and the referee refuses any attempt to move it. “Randomize” only works while the board is still empty. To rearrange ships you press “Start over”, which the referee treats as a new game (the game number changes), so nothing from the half-finished setup carries over. After every placement the referee remembers which ship went where, so the screen (and a screen reader) can confirm it, such as "Carrier placed at A1. Next: Battleship." Once the fleet is complete the board no longer takes clicks, and the message reads "All ships are placed. Press Start game to begin." If a click still reaches the referee at that point, it answers with that same message instead of asking you to select a ship.
 2. **Your turn.** Choose a square on the enemy board that has not been fired on before. A hit and a miss both use up your turn.
 3. **The computer's turn.** After a short pause of about 0.6 seconds, the computer fires at one untried square on your board.
 4. **Game over.** Play stops as soon as either fleet is sunk. The winner is announced and the enemy's remaining ships are shown. “Play again” starts a fresh setup.
 
 The referee checks every move, including whether it is the right player's turn and whether a square has already been used. The screen also marks unavailable squares so they cannot be chosen by mistake.
+
+## How messages reach screen readers
+
+A hidden "status" line on the page is read aloud by screen readers whenever its text changes. Its text is worked out from the referee's current state, never typed in by the screen. Because only *changes* are read out, every message must differ from the one before it: placement problems name the square ("Carrier would extend off the board at J1."), and successful placements are announced too, rather than falling back to the generic "Set up your fleet."
 
 ## How the computer chooses shots
 
@@ -43,3 +47,6 @@ When a game resets, the screen leaves the computer's turn, or the screen closes,
 - **Turn number:** `turnId` — advances after each accepted shot.
 - **Public information shown to the computer:** `AiView` — contains shot results and already-sunk ships, not the hidden fleet.
 - **Development safety check:** `Strict Mode` — repeats setup and cleanup to help catch mistakes.
+- **Last placed ship:** `setup.lastPlacement` — which ship was just placed and where, used for the confirmation message.
+- **Fleet complete reason:** `fleet-complete` — the referee's answer when a placement is attempted after every ship is already placed.
+- **Status line text:** `liveMessageForState` — turns the referee's state into the sentence screen readers hear.

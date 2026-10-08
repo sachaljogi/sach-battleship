@@ -76,6 +76,14 @@ This page records defects encountered while building the game. It does not claim
 - **Fix:** Request an asset directly when the browser response map has no matching entry, then assert its status.
 - **Verification:** The passing `e2e/smoke.spec.ts` checks every asset URL and status.
 
+### Completed fleet showed a "Select a ship" error
+
+- **Symptom:** After Randomize (or placing the last ship), clicking any fleet square showed "Select a ship before placing it." even though every ship was already placed. Screen readers also never heard successful placements, and a repeated identical error was not read out again because the status text did not change.
+- **Expected behavior:** A completed fleet should not accept placements or report a misleading error; placements and distinct errors should be announced.
+- **Cause:** `selectedShipId` becomes `null` once the fleet is complete, but `SetupScreen` passed `canActivate={() => true}`, so clicks still dispatched `placeShip`, which only knew the `no-ship-selected` reason. `liveMessageForState` fell back to "Set up your fleet." after a success and produced identical text for repeated errors.
+- **Fix:** Make fleet cells non-activatable when no ship is selected, add a `fleet-complete` reducer reason with the message "All ships are placed. Press Start game to begin.", record `setup.lastPlacement` so successes are announced ("Carrier placed at A1. Next: Battleship."), and include the square in error messages ("Carrier would extend off the board at J1.").
+- **Verification:** `npm test` — reducer tests in `src/game/__tests__/state.test.ts`, message tests in `src/ui/messages.test.ts`, and the status-region component test in `src/components/__tests__/App.test.tsx`.
+
 ### Game could silently stall on "AI is thinking..."
 
 - **Symptom:** After the player fired, the screen stayed on "AI is thinking..." forever; nothing was logged and only New game recovered.
