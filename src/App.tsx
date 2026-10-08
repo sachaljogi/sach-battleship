@@ -2,6 +2,7 @@ import type { Rng } from './game/rng'
 import BattleScreen from './components/BattleScreen'
 import Leaderboard from './components/Leaderboard'
 import SetupScreen from './components/SetupScreen'
+import RewardsBar from './components/RewardsBar'
 import { DEFAULT_TIMERS, useGame, type GameTimers } from './hooks/useGame'
 import { useSessionStats } from './hooks/useSessionStats'
 import { liveMessageForState, rankUpAnnouncement } from './ui/messages'
@@ -14,6 +15,7 @@ export default function App({ rng, timers = DEFAULT_TIMERS }: { rng: Rng; timers
 
   return (
     <main className="app-shell">
+      <RewardsBar state={state} />
       {state.phase === 'setup'
         ? <SetupScreen state={state} actions={actions} />
         : <BattleScreen state={state} timer={timer} actions={actions} />}

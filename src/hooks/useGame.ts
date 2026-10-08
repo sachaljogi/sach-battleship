@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { chooseAiShot } from '../game/ai'
 import { randomFleet } from '../game/placement'
+import type { Rewards } from '../game/rewards'
 import { createRng, type Rng } from '../game/rng'
 import {
   aiViewFromBoard,
@@ -13,6 +14,7 @@ import {
   type GameState,
 } from '../game/state'
 import type { Coord, ShipId } from '../game/types'
+import { defaultRewardsStorage, loadRewards, saveRewards } from './rewardsStorage'
 
 export const MOVE_TIME_MS = 5000
 export const AI_MIN_THINK_MS = 1500
@@ -63,7 +65,12 @@ export interface TimerView {
 
 export interface UseGameResult extends GameActions {
   state: GameState
+  rewards: Rewards
   timer: TimerView
+}
+
+export interface UseGameOptions {
+  storage?: Storage | null
 }
 
 interface Elapsed {
@@ -71,8 +78,10 @@ interface Elapsed {
   ms: number
 }
 
-export function useGame(rng: Rng, timers: GameTimers = DEFAULT_TIMERS): UseGameResult {
-  const [state, dispatch] = useReducer(gameReducer, undefined, () => createInitialState())
+export function useGame(rng: Rng, timers: GameTimers = DEFAULT_TIMERS, options: UseGameOptions = {}): UseGameResult {
+  const storage = options.storage === undefined ? defaultRewardsStorage() : options.storage
+  const [state, dispatch] = useReducer(gameReducer, undefined, () => createInitialState(1, loadRewards(storage)))
+  const rewards = state.rewards
   const [paused, setPaused] = useState(false)
   const [tick, setTick] = useState<{ key: string; elapsedMs: number } | null>(null)
   const elapsedRef = useRef<Elapsed>({ key: null, ms: 0 })
@@ -114,8 +123,13 @@ export function useGame(rng: Rng, timers: GameTimers = DEFAULT_TIMERS): UseGameR
   const elapsedMs = tick?.key === key ? tick.elapsedMs : 0
   const secondsLeft = key === null ? null : Math.max(0, Math.ceil((totalMs - elapsedMs) / 1000))
 
+  useEffect(() => {
+    saveRewards(storage, rewards)
+  }, [storage, rewards])
+
   return {
     state,
+    rewards,
     timer: { secondsLeft, paused },
     selectShip: (shipId: ShipId) => dispatch({ type: 'selectShip', shipId }),
     rotate: () => dispatch({ type: 'rotate' }),

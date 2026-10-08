@@ -7,7 +7,7 @@ Behind the screen, a rules engine—the referee—decides which moves are allowe
 1. **Set up the fleet.** Place all five ships yourself or let the game arrange them. Play cannot start until every ship is placed. A ship is locked the moment it is placed: its entry in the fleet list is greyed out, and the referee refuses any attempt to move it. “Randomize” only works while the board is still empty. To rearrange ships you press “Start over”, which the referee treats as a new game (the game number changes), so nothing from the half-finished setup carries over. After every placement the referee remembers which ship went where, so the screen (and a screen reader) can confirm it, such as "Carrier placed at A1. Next: Battleship." Once the fleet is complete the board no longer takes clicks, and the message reads "All ships are placed. Press Start game to begin." If a click still reaches the referee at that point, it answers with that same message instead of asking you to select a ship.
 2. **Your turn.** Choose a square on the enemy board that has not been fired on before. A hit and a miss both use up your turn. You have 5 seconds: a countdown next to "Your turn" shows the seconds left, and the last three seconds are also read out for screen-reader users. If the clock reaches zero, the game chooses a square for you using the same search method the computer uses (an untried square, following up any earlier hits), fires it, and the status line says that time ran out. Opening the "New game" confirmation pauses the clock; "Keep playing" resumes it with the same number of seconds remaining.
 3. **The computer's turn.** The computer "thinks" for between 1.5 and 5 seconds, and the same countdown shows when its shot will land. The exact pause is fixed for each turn (it is worked out from the game number, turn number and your last shot), so the same game always replays the same way. Then it fires at one untried square on your board.
-4. **Game over.** Play stops as soon as either fleet is sunk. The winner is announced and the enemy's remaining ships are shown. “Play again” starts a fresh setup.
+4. **Game over.** Play stops as soon as either fleet is sunk. The winner is announced, coins are awarded, and the enemy's remaining ships are shown. “Play again” starts a fresh setup for the next game of the series.
 
 The referee checks every move, including whether it is the right player's turn and whether a square has already been used. The screen also marks unavailable squares so they cannot be chosen by mistake.
 
@@ -31,6 +31,19 @@ Once it has hit something, it works through the following checklist, top to bott
 Squares belonging to a sunk ship are no longer treated as an unfinished target, but hits on other ships remain targets. Earlier versions of the computer measured a line's direction by the distance between its first and last hit, so after three hits in a row it aimed two squares past the end and appeared to "skip a box"; the direction is now always a single step.
 
 Because the computer sees only this public information, it has no advantage from knowing where the unsunk ships are hidden.
+
+## Gold coins and series
+
+Think of the referee as also keeping a small scorecard next to the board. The scorecard has three things on it: the player's gold coin total, the current series (how many games each side has won, and whether the series is decided), and a list of finished series.
+
+- A series is best-of-three: the first side to win two games takes it, so a series lasts two or three games.
+- When a game ends, the referee updates the scorecard in the same step that declares the winner. A game won by the player is worth 1 coin. If that win also decides the series, a bonus of 3 coins is added at the same time, and the finished series is added to the list.
+- "Play again" keeps the scorecard: if the series is still open, the next game continues it; if the series is decided, a new series starts at 0 – 0.
+- Confirming "New game" while a game is in progress is a forfeit: the referee records a game won by the computer (marked as abandoned), pays no coins, and if that decides the series, closes it and opens a new one. "New game" during setup or after a finished game is not a forfeit. The scorecard remembers the forfeited game until the next game starts, so the setup screen and the screen-reader announcement can explain what happened.
+
+The scorecard is part of the game state, so every rule about coins lives in the referee and is covered by the same tests as the rest of the rules. The screen only reads it: the yellow bar at the top shows the coin total and series score on every screen, the result screen explains what was earned, and the hidden announcement for screen readers says the same thing.
+
+Saving is a thin layer outside the referee. Whenever the scorecard changes, the React hook writes it to the browser's session storage under one key, and reads it back when the page loads. Session storage lasts for one browser tab: a refresh keeps the scorecard, closing the tab clears it, the same lifetime as the session leaderboard. Anything that does not look like a valid scorecard (missing, corrupted, or from a different version) is ignored and the player starts from zero. A game in progress is still not saved. Other features, such as a leaderboard, can read the same scorecard from the hook (`rewards`) without touching the referee.
 
 ## Why delayed moves are guarded
 
@@ -57,6 +70,9 @@ The ledger is saved to the browser's session storage after every change and read
 - **Rules engine (referee):** `reducer` — accepts legal moves and updates the game.
 - **Game number:** `matchId` — changes when a fresh game starts.
 - **Turn number:** `turnId` — advances after each accepted shot.
+- **Scorecard:** `Rewards` in `src/game/rewards.ts` — `coins` (total), `series` (`id`, `playerWins`, `aiWins`, `winner`, and `games`, one `GameRecord` per game with `winner`, `forfeit`, `coinsEarned`), `history` (finished series with their games and the coins each earned), and `lastGame` (the game that just ended, used for the announcements).
+- **Scorecard rules:** `recordGameResult` (called by the referee when a game ends), `rewardsAfterForfeit` (called when a game in progress is abandoned), and `rewardsForNextGame` (called on “Play again” and on “New game” after a finished game); the amounts are the constants `COINS_PER_GAME_WIN`, `SERIES_WIN_BONUS`, and `SERIES_WINS_NEEDED` in the same file.
+- **Saving the scorecard:** `src/hooks/rewardsStorage.ts` — `loadRewards` and `saveRewards`, using the session storage key `sach-battleship.rewards.v1`.
 - **Automatic shot when time runs out:** `playerTimeout` — a move the screen sends for the player; the referee accepts it only if it matches the current game and turn. `autoFired` records that the last player shot was automatic so the status line can say so.
 - **Move clock settings:** `GameTimers` — the 5-second move limit (`moveTimeMs`), the computer's shortest and longest pause (`aiMinThinkMs`, `aiMaxThinkMs`) and how often the countdown updates (`tickMs`). Tests pass shorter settings instead of waiting for real seconds.
 - **Public information shown to the computer:** `AiView` — contains shot results and already-sunk ships, not the hidden fleet.

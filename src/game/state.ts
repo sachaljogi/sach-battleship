@@ -1,6 +1,13 @@
 import { allCoords, BOARD_SIZE, coordKey, sameCoord } from './coordinates'
 import type { AiView } from './ai'
 import { isCompleteValidFleet, placeShip, shipCells } from './placement'
+import {
+  createInitialRewards,
+  recordGameResult,
+  rewardsAfterForfeit,
+  rewardsForNextGame,
+  type Rewards,
+} from './rewards'
 import { fireAt, isFleetSunk, remainingShips, sunkShipIds } from './shots'
 import { FLEET, type Board, type Coord, type Orientation, type PlacedShip, type ShipId, type Shot } from './types'
 
@@ -33,6 +40,7 @@ export interface GameState {
   playerBoard: Board
   enemyBoard: Board
   winner: Side | null
+  rewards: Rewards
   autoFired: boolean
 }
 
@@ -58,7 +66,7 @@ export type PlayerCellView = Omit<CellView, 'state'> & {
   state: CellView['state'] | 'ship'
 }
 
-export function createInitialState(matchId = 1): GameState {
+export function createInitialState(matchId = 1, rewards: Rewards = createInitialRewards()): GameState {
   return {
     phase: 'setup',
     matchId,
@@ -73,6 +81,7 @@ export function createInitialState(matchId = 1): GameState {
     playerBoard: { ships: [], shots: [] },
     enemyBoard: { ships: [], shots: [] },
     winner: null,
+    rewards,
     autoFired: false,
   }
 }
@@ -99,6 +108,7 @@ function applyPlayerShot(state: GameState, coord: Coord, autoFired: boolean): Ga
     enemyBoard: result.board,
     winner: won ? 'player' : null,
     autoFired,
+    rewards: won ? recordGameResult(state.rewards, 'player') : state.rewards,
   }
 }
 
@@ -183,7 +193,7 @@ export function gameReducer(state: GameState, action: Action): GameState {
     }
     case 'clearBoard': {
       if (state.phase !== 'setup' || state.setup.ships.length === 0) return state
-      return createInitialState(state.matchId + 1)
+      return createInitialState(state.matchId + 1, state.rewards)
     }
     case 'startGame': {
       if (state.phase !== 'setup'
@@ -200,6 +210,7 @@ export function gameReducer(state: GameState, action: Action): GameState {
           shots: [],
         },
         winner: null,
+        rewards: state.rewards.lastGame ? { ...state.rewards, lastGame: null } : state.rewards,
       }
     }
     case 'playerFire': {
@@ -231,13 +242,19 @@ export function gameReducer(state: GameState, action: Action): GameState {
         phase: lost ? 'gameOver' : 'playerTurn',
         playerBoard: result.board,
         winner: lost ? 'ai' : null,
+        rewards: lost ? recordGameResult(state.rewards, 'ai') : state.rewards,
       }
     }
     case 'playAgain':
-      return state.phase === 'gameOver' ? createInitialState(state.matchId + 1) : state
+      return state.phase === 'gameOver'
+        ? createInitialState(state.matchId + 1, rewardsForNextGame(state.rewards))
+        : state
     case 'newGame':
-      if (state.phase !== 'playerTurn' && state.phase !== 'aiTurn' && state.phase !== 'gameOver') return state
-      return createInitialState(state.matchId + 1)
+      if (state.phase === 'playerTurn' || state.phase === 'aiTurn') {
+        return createInitialState(state.matchId + 1, rewardsAfterForfeit(state.rewards))
+      }
+      if (state.phase !== 'gameOver') return state
+      return createInitialState(state.matchId + 1, rewardsForNextGame(state.rewards))
     default:
       return state
   }

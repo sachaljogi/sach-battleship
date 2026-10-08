@@ -1,4 +1,5 @@
 import { formatCoord } from '../game/coordinates'
+import { currentGameNumber, forfeitWouldDecideSeries, gamesPlayed, SERIES_MAX_GAMES } from '../game/rewards'
 import { isCompleteValidFleet } from '../game/placement'
 import { lastShot } from '../game/state'
 import type { GameState, PlacementError, Side } from '../game/state'
@@ -76,6 +77,61 @@ export function turnMessage(state: GameState): string {
   return 'Set up your fleet.'
 }
 
+export function coinsText(count: number): string {
+  return `${count} gold coin${count === 1 ? '' : 's'}`
+}
+
+export function coinTotalMessage(state: GameState): string {
+  return `Gold coins: ${state.rewards.coins}`
+}
+
+export function seriesScoreMessage(state: GameState): string {
+  const { series } = state.rewards
+  const score = `You ${series.playerWins} – AI ${series.aiWins}`
+  if (series.winner) {
+    return series.winner === 'player'
+      ? `Series won ${score}. Play again to start a new series.`
+      : `Series lost ${score}. Play again to start a new series.`
+  }
+  if (state.phase === 'gameOver') {
+    return `Series: ${score} after game ${gamesPlayed(series)} of ${SERIES_MAX_GAMES}`
+  }
+  return `Series: ${score}, game ${currentGameNumber(series)} of ${SERIES_MAX_GAMES}`
+}
+
+export function seriesResultMessage(state: GameState): string | null {
+  if (state.phase !== 'gameOver') return null
+  const { series } = state.rewards
+  const score = `${series.playerWins}–${series.aiWins}`
+  if (series.winner === 'player') return `You won the best-of-${SERIES_MAX_GAMES} series ${score}!`
+  if (series.winner === 'ai') return `The AI won the best-of-${SERIES_MAX_GAMES} series ${score}.`
+  return `Series: You ${series.playerWins} – AI ${series.aiWins}. Next up: game ${currentGameNumber(series)} of ${SERIES_MAX_GAMES}.`
+}
+
+export function rewardMessage(state: GameState): string | null {
+  const { lastGame, coins, series } = state.rewards
+  if (state.phase !== 'gameOver' || !lastGame || lastGame.coinsEarned <= 0) return null
+  const detail = series.winner === 'player' ? ' (1 for the win plus a series bonus)' : ''
+  return `You earned ${coinsText(lastGame.coinsEarned)}${detail}. Total: ${coins}.`
+}
+
+export function abandonWarningMessage(state: GameState): string {
+  return forfeitWouldDecideSeries(state.rewards)
+    ? 'Abandon this game? It counts as a loss, and the AI will win the series.'
+    : 'Abandon this game? It counts as a loss in the series.'
+}
+
+export function forfeitMessage(state: GameState): string | null {
+  const { lastGame, series, history } = state.rewards
+  if (state.phase !== 'setup' || !lastGame?.forfeit) return null
+  const intro = 'You abandoned the last game, so it counted as a loss.'
+  const decided = history.at(-1)
+  if (gamesPlayed(series) === 0 && decided) {
+    return `${intro} The AI won the best-of-${SERIES_MAX_GAMES} series ${decided.playerWins}–${decided.aiWins}. A new series starts now.`
+  }
+  return `${intro} Series: You ${series.playerWins} – AI ${series.aiWins}. Next up: game ${currentGameNumber(series)} of ${SERIES_MAX_GAMES}.`
+}
+
 export const ANNOUNCE_LAST_SECONDS = 3
 
 export function timerMessage(state: GameState, timer: TimerView): { label: string; value: string } | null {
@@ -96,7 +152,10 @@ function countdownAnnouncement(state: GameState, timer?: TimerView): string | nu
 }
 
 export function liveMessageForState(state: GameState, timer?: TimerView): string {
-  if (state.phase === 'setup') return setupMessage(state)
+  if (state.phase === 'setup') {
+    return placementErrorMessage(state.setup.error)
+      ?? [forfeitMessage(state), setupMessage(state)].filter(Boolean).join(' ')
+  }
   const playerShot = latestPlayerShotMessage(state)
   const aiShot = latestAiShotMessage(state)
   if (state.phase === 'aiTurn') {
@@ -104,7 +163,7 @@ export function liveMessageForState(state: GameState, timer?: TimerView): string
   }
   if (state.phase === 'gameOver') {
     const winner = state.winner === 'player' ? 'You win!' : 'The AI wins.'
-    return [winner, playerShot, aiShot].filter(Boolean).join(' ')
+    return [winner, rewardMessage(state), seriesResultMessage(state), playerShot, aiShot].filter(Boolean).join(' ')
   }
   const countdown = countdownAnnouncement(state, timer)
   return countdown ?? [aiShot, 'Your turn — fire on Enemy waters'].filter(Boolean).join(' ')

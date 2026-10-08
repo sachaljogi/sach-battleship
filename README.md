@@ -22,6 +22,20 @@ Under the game, a "Session leaderboard" panel keeps score for as long as the bro
 
 During a battle the panel shrinks to the rank, record and streak so it does not crowd the boards. The scores are saved in the browser's `sessionStorage`, so they survive a page refresh but are cleared when the tab is closed. Abandoning a game with "New game" does not count as a loss; only finished games are recorded.
 
+## Gold coins and best-of-3 series
+
+Games are grouped into short series: the first side to win two games wins the series (at most three games). The yellow bar at the top of the page always shows your gold coin total and the series score, for example "Series: You 1 – AI 1, game 3 of 3".
+
+- Winning a game earns **1 gold coin**.
+- Winning a series earns a **bonus of 3 gold coins** on top of the coins for the games.
+- Losing a game or a series costs nothing; the coins you already have stay with you.
+
+After each game the result screen tells you how many coins you earned and where the series stands. "Play again" continues the current series, or starts a new series once the previous one has been decided.
+
+Abandoning a match counts as a loss: if you confirm "New game" while a game is in progress, the AI is given that game in the series (and wins the series if that makes two), and you earn no coins for it. The confirmation prompt warns you first, and the setup screen explains where the series stands afterwards.
+
+Coins and the series score are kept for the current browser tab (session storage), so they survive a page refresh but reset when the tab is closed, matching the session leaderboard.
+
 ## Requirements
 
 - Node.js 24, as selected by `.nvmrc`
@@ -80,7 +94,7 @@ GitHub Actions runs typecheck, lint, unit tests, build, and a Chromium smoke tes
 
 ## Known limitations
 
-- Games in progress are not saved; refreshing the page returns to fleet setup. The session leaderboard is kept for the life of the browser tab only.
+- A game in progress is not saved; refreshing the page returns to fleet setup. Gold coins, the series score and the session leaderboard are kept until the tab is closed.
 - During setup, a ship stays where you put it. Once any ship is placed, Randomize is switched off and the only way to rearrange the fleet is "Start over", which begins a brand-new game.
 - The game is single-player against the AI; there is no online multiplayer.
 - The AI uses a hunt-and-target heuristic, not probability-density search.
