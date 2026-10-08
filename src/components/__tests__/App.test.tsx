@@ -7,7 +7,7 @@ import App from '../../App'
 import { AI_DELAY_MS } from '../../hooks/useGame'
 import { allCoords, coordKey, formatCoord } from '../../game/coordinates'
 import { randomFleet, shipCells } from '../../game/placement'
-import { createRng } from '../../game/rng'
+import { createRng, type Rng } from '../../game/rng'
 import type { Coord, PlacedShip } from '../../game/types'
 
 const DEFAULT_SEED = 7281
@@ -21,6 +21,12 @@ function enemyFleetForSeed(seed: number): PlacedShip[] {
 function renderApp(seed = DEFAULT_SEED, strict = false) {
   const app = <App rng={createRng(seed)} />
   return render(strict ? <StrictMode>{app}</StrictMode> : app)
+}
+
+async function startGameWithRng(user: ReturnType<typeof setupUser>, rng: Rng) {
+  render(<App rng={rng} />)
+  await user.click(screen.getByRole('button', { name: 'Randomize' }))
+  await user.click(screen.getByRole('button', { name: 'Start game' }))
 }
 
 function setupUser() {
@@ -97,14 +103,47 @@ describe('Battleship screens', () => {
     expect(screen.getByRole('gridcell', { name: 'Your fleet, A1, Carrier' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Carrier, length 5 — Placed/ })).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: /Carrier, length 5 — Placed/ }))
-    await user.click(screen.getByRole('gridcell', { name: 'Your fleet, G10, empty' }))
-    expect(screen.getByText('Carrier would extend off the board.', { selector: '.error-message' }))
+    await user.click(screen.getByRole('gridcell', { name: 'Your fleet, H10, empty' }))
+    expect(screen.getByText('Battleship would extend off the board.', { selector: '.error-message' }))
       .toBeInTheDocument()
     expect(screen.getByRole('gridcell', { name: 'Your fleet, A1, Carrier' })).toBeInTheDocument()
   })
 
-  it('gates Start during manual placement and after clearing a randomized fleet', async () => {
+  it('locks placed ships and only Start over can change the fleet', async () => {
+    const user = setupUser()
+    renderApp()
+    const randomize = screen.getByRole('button', { name: 'Randomize' })
+    const startOver = screen.getByRole('button', { name: 'Start over' })
+    expect(randomize).toBeEnabled()
+    expect(startOver).toBeDisabled()
+    expect(screen.getByText(/Once a ship is placed it is locked/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('gridcell', { name: 'Your fleet, A1, empty' }))
+    const carrier = screen.getByRole('button', { name: 'Carrier, length 5 — Placed — locked' })
+    expect(carrier).toBeDisabled()
+    expect(carrier).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Battleship, length 4 — Not placed' }))
+      .toHaveAttribute('aria-pressed', 'true')
+    expect(randomize).toBeDisabled()
+    expect(startOver).toBeEnabled()
+
+    await user.click(carrier)
+    expect(screen.getByRole('button', { name: 'Battleship, length 4 — Not placed' }))
+      .toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByText(/already placed/, { selector: '.error-message' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('gridcell', { name: 'Your fleet, A3, empty' }))
+    expect(screen.getByRole('gridcell', { name: 'Your fleet, A1, Carrier' })).toBeInTheDocument()
+    expect(screen.getByRole('gridcell', { name: 'Your fleet, A3, Battleship' })).toBeInTheDocument()
+
+    await user.click(startOver)
+    expect(screen.getByRole('gridcell', { name: 'Your fleet, A1, empty' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Carrier, length 5 — Not placed' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Randomize' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Start over' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Start game' })).toBeDisabled()
+  })
+
+  it('gates Start during manual placement and after starting over from a randomized fleet', async () => {
     const user = setupUser()
     renderApp()
     const start = screen.getByRole('button', { name: 'Start game' })
@@ -123,10 +162,13 @@ describe('Battleship screens', () => {
       }))
     }
     expect(start).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Randomize' })).toBeDisabled()
 
+    await user.click(screen.getByRole('button', { name: 'Start over' }))
+    expect(start).toBeDisabled()
     await user.click(screen.getByRole('button', { name: 'Randomize' }))
     expect(start).toBeEnabled()
-    await user.click(screen.getByRole('button', { name: 'Clear board' }))
+    await user.click(screen.getByRole('button', { name: 'Start over' }))
     expect(start).toBeDisabled()
   })
 
@@ -152,6 +194,27 @@ describe('Battleship screens', () => {
     await advanceAI(5000)
     expect(boardSnapshot(playerGrid)).toBe(aiBoardBefore)
     expect(countShots(enemyGrid)).toBe(1)
+  })
+
+  it.each([
+    ['() => 1', () => 1],
+    ['() => NaN', () => Number.NaN],
+  ])('clears "AI is thinking..." with the degenerate rng %s', async (_label, rng) => {
+    const user = setupUser()
+    await startGameWithRng(user, rng)
+    const playerGrid = screen.getByRole('grid', { name: 'Your fleet' })
+
+    await user.click(enemyCell({ row: 0, col: 0 }))
+    expect(screen.getByRole('status')).toHaveTextContent('AI is thinking...')
+    await advanceAI()
+    expect(screen.queryByText('AI is thinking...')).not.toBeInTheDocument()
+    expect(countShots(playerGrid)).toBe(1)
+    expect(vi.getTimerCount()).toBe(0)
+
+    await user.click(enemyCell({ row: 0, col: 1 }))
+    await advanceAI()
+    expect(screen.queryByText('AI is thinking...')).not.toBeInTheDocument()
+    expect(countShots(playerGrid)).toBe(2)
   })
 
   it('does not let the AI reply to a winning player shot', async () => {

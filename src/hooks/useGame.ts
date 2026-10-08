@@ -49,7 +49,7 @@ export function useGame(rng: Rng, options: UseGameOptions = {}): UseGameResult {
     if (matchId === undefined || turnId === undefined) return
     const timer = setTimeout(() => {
       const coord = chooseAiShot(aiViewFromBoard(playerBoard), rng)
-      if (coord) dispatch({ type: 'aiFire', coord, matchId, turnId })
+      dispatch({ type: 'aiFire', coord, matchId, turnId })
     }, AI_DELAY_MS)
     return () => clearTimeout(timer)
   }, [matchId, turnId, playerBoard, rng])

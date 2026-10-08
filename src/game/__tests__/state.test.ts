@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { allCoords, coordKey, BOARD_SIZE } from '../coordinates'
 import { chooseAiShot } from '../ai'
 import { createRng, pick } from '../rng'
@@ -8,6 +8,7 @@ import {
   aiViewFromBoard,
   createInitialState,
   enemyCellViews,
+  firstUntriedCoord,
   gameReducer,
   lastShot,
   playerCellViews,
@@ -284,6 +285,71 @@ describe('game reducer', () => {
     expect(gameReducer(returned, { type: 'playerFire', coord: { row: 10, col: 0 } })).toBe(returned)
   })
 
+  describe('rejected AI shots never leave the game in aiTurn', () => {
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    function aiTurnWithRepeat(): GameState {
+      const started = startGame()
+      const first = gameReducer(started, { type: 'playerFire', coord: { row: 5, col: 5 } })
+      const replied = gameReducer(first, { type: 'aiFire', coord: { row: 0, col: 0 }, matchId: first.matchId, turnId: first.turnId })
+      expect(replied.phase).toBe('playerTurn')
+      return gameReducer(replied, { type: 'playerFire', coord: { row: 5, col: 6 } })
+    }
+
+    it.each([
+      ['a repeated cell', { row: 0, col: 0 }, 'repeat'],
+      ['an out-of-bounds cell', { row: 10, col: 0 }, 'out-of-bounds'],
+      ['a missing shot', null, 'no-shot'],
+    ])('fires at the first untried cell instead of %s', (_label, coord, reason) => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      const aiTurn = aiTurnWithRepeat()
+      expect(aiTurn.phase).toBe('aiTurn')
+      const fallback = firstUntriedCoord(aiTurn.playerBoard)
+      expect(fallback).toEqual({ row: 0, col: 1 })
+      const next = gameReducer(aiTurn, { type: 'aiFire', coord, matchId: aiTurn.matchId, turnId: aiTurn.turnId })
+      expect(next).not.toBe(aiTurn)
+      expect(next.phase).toBe('playerTurn')
+      expect(next.turnId).toBe(aiTurn.turnId + 1)
+      expect(next.playerBoard.shots).toHaveLength(2)
+      expect(lastShot(next.playerBoard)?.coord).toEqual(fallback)
+      expect(scheduledAiTurn(next)).toBeNull()
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(warn.mock.calls[0]?.[0]).toContain(reason)
+    })
+
+    it('is deterministic and leaves its inputs untouched', () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      const aiTurn = freezeDeep(aiTurnWithRepeat())
+      const action = { type: 'aiFire', coord: { row: 0, col: 0 }, matchId: aiTurn.matchId, turnId: aiTurn.turnId } as const
+      expect(gameReducer(aiTurn, action)).toEqual(gameReducer(aiTurn, action))
+    })
+
+    it('still ignores stale AI shots without firing a fallback', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      const aiTurn = aiTurnWithRepeat()
+      expect(gameReducer(aiTurn, { type: 'aiFire', coord: null, matchId: aiTurn.matchId, turnId: aiTurn.turnId + 1 }))
+        .toBe(aiTurn)
+      expect(warn).not.toHaveBeenCalled()
+    })
+
+    it('returns the turn to the player when no untried cell remains', () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      const aiTurn = aiTurnWithRepeat()
+      const fullBoard: Board = {
+        ships: aiTurn.playerBoard.ships,
+        shots: allCoords().map((coord) => ({ coord, outcome: 'miss' as const })),
+      }
+      const exhausted: GameState = { ...aiTurn, playerBoard: fullBoard }
+      expect(firstUntriedCoord(fullBoard)).toBeNull()
+      const next = gameReducer(exhausted, { type: 'aiFire', coord: null, matchId: aiTurn.matchId, turnId: aiTurn.turnId })
+      expect(next.phase).toBe('playerTurn')
+      expect(next.turnId).toBe(aiTurn.turnId + 1)
+      expect(next.playerBoard).toBe(fullBoard)
+    })
+  })
+
   it('ends immediately on the winning player shot without scheduling an AI turn', () => {
     const prepared = winningPlayerTurn(startGame())
     const won = gameReducer(prepared.state, { type: 'playerFire', coord: prepared.finalCoord })
@@ -309,21 +375,45 @@ describe('game reducer', () => {
     expect(setup.setup.ships).toBe(ships)
   })
 
-  it('clears setup errors on success, re-places selected ships, and supports randomize and clear', () => {
+  it('clears setup errors on success and locks placed ships against re-placement', () => {
     let state = gameReducer(createInitialState(), { type: 'placeShip', coord: { row: 9, col: 9 } })
     state = gameReducer(state, { type: 'placeShip', coord: { row: 0, col: 0 } })
     expect(state.setup.error).toBeNull()
     expect(state.setup.ships).toHaveLength(1)
-    state = gameReducer(state, { type: 'selectShip', shipId: 'carrier' })
-    state = gameReducer(state, { type: 'placeShip', coord: { row: 2, col: 0 } })
-    expect(state.setup.ships).toHaveLength(1)
-    expect(state.setup.ships[0]?.origin).toEqual({ row: 2, col: 0 })
-    const randomized = gameReducer(state, { type: 'randomizeFleet', ships: fleet(8) })
+    expect(state.setup.selectedShipId).toBe('battleship')
+
+    const selectLocked = gameReducer(state, { type: 'selectShip', shipId: 'carrier' })
+    expect(selectLocked.setup.error).toEqual({ reason: 'already-placed', shipId: 'carrier' })
+    expect(selectLocked.setup.selectedShipId).toBe('battleship')
+    expect(selectLocked.setup.ships).toBe(state.setup.ships)
+
+    const forced: GameState = { ...state, setup: { ...state.setup, selectedShipId: 'carrier' } }
+    const rePlaced = gameReducer(forced, { type: 'placeShip', coord: { row: 2, col: 0 } })
+    expect(rePlaced.setup.error).toEqual({ reason: 'already-placed', shipId: 'carrier', coord: { row: 2, col: 0 } })
+    expect(rePlaced.setup.ships).toBe(forced.setup.ships)
+    expect(rePlaced.setup.ships[0]?.origin).toEqual({ row: 0, col: 0 })
+  })
+
+  it('allows randomize only on an empty board and makes Start over a new game', () => {
+    const empty = createInitialState()
+    expect(gameReducer(empty, { type: 'clearBoard' })).toBe(empty)
+    const randomized = gameReducer(empty, { type: 'randomizeFleet', ships: fleet(8) })
     expect(isCompleteValidFleet(randomized.setup.ships)).toBe(true)
     expect(randomized.setup.error).toBeNull()
-    const cleared = gameReducer(randomized, { type: 'clearBoard' })
-    expect(cleared.setup.ships).toEqual([])
-    expect(cleared.setup.error).toBeNull()
+    expect(gameReducer(randomized, { type: 'randomizeFleet', ships: fleet(9) })).toBe(randomized)
+
+    const placed = gameReducer(empty, { type: 'placeShip', coord: { row: 0, col: 0 } })
+    expect(gameReducer(placed, { type: 'randomizeFleet', ships: fleet(8) })).toBe(placed)
+
+    const restarted = gameReducer(placed, { type: 'clearBoard' })
+    expect(restarted).toEqual(createInitialState(placed.matchId + 1))
+    expect(restarted.setup.ships).toEqual([])
+    expect(restarted.setup.error).toBeNull()
+
+    const rewarded = { ...placed, rewards: { ...placed.rewards, coins: 4 } }
+    const restartedWithRewards = gameReducer(rewarded, { type: 'clearBoard' })
+    expect(restartedWithRewards.rewards).toBe(rewarded.rewards)
+    expect(restartedWithRewards.setup.ships).toEqual([])
   })
 
   it('allows newGame during a match but rejects it during setup', () => {

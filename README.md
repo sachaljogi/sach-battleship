@@ -72,7 +72,7 @@ The Vite base path is `/sach-battleship/`. While `npm run preview` is running on
 
 ## How the AI works
 
-The AI hunts on a checkerboard while those cells remain, then considers any untried cell. After a hit it targets orthogonal neighbors; aligned hits guide it toward the ends of that line. It continues pursuing unresolved hits even if a different ship has already sunk. The AI receives only the public `AiView`—shot outcomes and information about ships already sunk—not the hidden fleet layout.
+The AI hunts on a checkerboard while those cells remain, then considers any untried cell. After a hit it tries the squares next to that hit, starting with its most recent hit. Once two or more hits line up, it always shoots the square just past one end of that line while such a square is still open; if both ends are blocked by a miss or the board edge, it tries the squares alongside the line (two ships may be lying side by side). It continues pursuing unresolved hits even if a different ship has already sunk. The AI receives only the public `AiView`—shot outcomes and information about ships already sunk—not the hidden fleet layout.
 
 ## Deployment
 
@@ -81,6 +81,7 @@ GitHub Actions runs typecheck, lint, unit tests, build, and a Chromium smoke tes
 ## Known limitations
 
 - A game in progress is not saved; refreshing the page returns to fleet setup. Gold coins and the series score are kept until the tab is closed.
+- During setup, a ship stays where you put it. Once any ship is placed, Randomize is switched off and the only way to rearrange the fleet is "Start over", which begins a brand-new game.
 - The game is single-player against the AI; there is no online multiplayer.
 - The AI uses a hunt-and-target heuristic, not probability-density search.
 - Board cells remain at least 24px wide; at very narrow widths they may be about 24–25px and the board can scroll within its own container.
