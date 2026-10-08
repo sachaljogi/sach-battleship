@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { allCoords, coordKey, BOARD_SIZE } from '../coordinates'
 import { chooseAiShot } from '../ai'
 import { createRng, pick } from '../rng'
@@ -8,6 +8,7 @@ import {
   aiViewFromBoard,
   createInitialState,
   enemyCellViews,
+  firstUntriedCoord,
   gameReducer,
   lastShot,
   playerCellViews,
@@ -105,6 +106,71 @@ describe('game reducer', () => {
     expect(returned.phase).toBe('playerTurn')
     expect(gameReducer(returned, { type: 'playerFire', coord: coordinate })).toBe(returned)
     expect(gameReducer(returned, { type: 'playerFire', coord: { row: 10, col: 0 } })).toBe(returned)
+  })
+
+  describe('rejected AI shots never leave the game in aiTurn', () => {
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    function aiTurnWithRepeat(): GameState {
+      const started = startGame()
+      const first = gameReducer(started, { type: 'playerFire', coord: { row: 5, col: 5 } })
+      const replied = gameReducer(first, { type: 'aiFire', coord: { row: 0, col: 0 }, matchId: first.matchId, turnId: first.turnId })
+      expect(replied.phase).toBe('playerTurn')
+      return gameReducer(replied, { type: 'playerFire', coord: { row: 5, col: 6 } })
+    }
+
+    it.each([
+      ['a repeated cell', { row: 0, col: 0 }, 'repeat'],
+      ['an out-of-bounds cell', { row: 10, col: 0 }, 'out-of-bounds'],
+      ['a missing shot', null, 'no-shot'],
+    ])('fires at the first untried cell instead of %s', (_label, coord, reason) => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      const aiTurn = aiTurnWithRepeat()
+      expect(aiTurn.phase).toBe('aiTurn')
+      const fallback = firstUntriedCoord(aiTurn.playerBoard)
+      expect(fallback).toEqual({ row: 0, col: 1 })
+      const next = gameReducer(aiTurn, { type: 'aiFire', coord, matchId: aiTurn.matchId, turnId: aiTurn.turnId })
+      expect(next).not.toBe(aiTurn)
+      expect(next.phase).toBe('playerTurn')
+      expect(next.turnId).toBe(aiTurn.turnId + 1)
+      expect(next.playerBoard.shots).toHaveLength(2)
+      expect(lastShot(next.playerBoard)?.coord).toEqual(fallback)
+      expect(scheduledAiTurn(next)).toBeNull()
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(warn.mock.calls[0]?.[0]).toContain(reason)
+    })
+
+    it('is deterministic and leaves its inputs untouched', () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      const aiTurn = freezeDeep(aiTurnWithRepeat())
+      const action = { type: 'aiFire', coord: { row: 0, col: 0 }, matchId: aiTurn.matchId, turnId: aiTurn.turnId } as const
+      expect(gameReducer(aiTurn, action)).toEqual(gameReducer(aiTurn, action))
+    })
+
+    it('still ignores stale AI shots without firing a fallback', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      const aiTurn = aiTurnWithRepeat()
+      expect(gameReducer(aiTurn, { type: 'aiFire', coord: null, matchId: aiTurn.matchId, turnId: aiTurn.turnId + 1 }))
+        .toBe(aiTurn)
+      expect(warn).not.toHaveBeenCalled()
+    })
+
+    it('returns the turn to the player when no untried cell remains', () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      const aiTurn = aiTurnWithRepeat()
+      const fullBoard: Board = {
+        ships: aiTurn.playerBoard.ships,
+        shots: allCoords().map((coord) => ({ coord, outcome: 'miss' as const })),
+      }
+      const exhausted: GameState = { ...aiTurn, playerBoard: fullBoard }
+      expect(firstUntriedCoord(fullBoard)).toBeNull()
+      const next = gameReducer(exhausted, { type: 'aiFire', coord: null, matchId: aiTurn.matchId, turnId: aiTurn.turnId })
+      expect(next.phase).toBe('playerTurn')
+      expect(next.turnId).toBe(aiTurn.turnId + 1)
+      expect(next.playerBoard).toBe(fullBoard)
+    })
   })
 
   it('ends immediately on the winning player shot without scheduling an AI turn', () => {

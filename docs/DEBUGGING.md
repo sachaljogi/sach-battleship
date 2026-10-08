@@ -84,6 +84,14 @@ This page records defects encountered while building the game. It does not claim
 - **Fix:** Make fleet cells non-activatable when no ship is selected, add a `fleet-complete` reducer reason with the message "All ships are placed. Press Start game to begin.", record `setup.lastPlacement` so successes are announced ("Carrier placed at A1. Next: Battleship."), and include the square in error messages ("Carrier would extend off the board at J1.").
 - **Verification:** `npm test` — reducer tests in `src/game/__tests__/state.test.ts`, message tests in `src/ui/messages.test.ts`, and the status-region component test in `src/components/__tests__/App.test.tsx`.
 
+### Game could silently stall on "AI is thinking..."
+
+- **Symptom:** After the player fired, the screen stayed on "AI is thinking..." forever; nothing was logged and only New game recovered.
+- **Expected behavior:** The computer always answers a player's shot, so the game can never be stuck in `aiTurn`.
+- **Cause:** The delayed computer move only dispatched when the AI picked a square, and the referee returned the same state when that square was rejected (already used or off the board). With nothing changed, no new delayed move was scheduled. An `Rng` returning 1 or `NaN` made `randomInt` produce an out-of-range index, so `pick` returned `undefined` and the AI picked nothing.
+- **Fix:** The referee now treats a rejected or missing computer shot as "fire at the first untried square" (deterministic, no randomness inside the reducer); if no untried square remains it hands the turn back to the player. `randomInt` clamps every result into range, so bad random numbers cannot produce holes in `shuffle` or an `undefined` pick. In development builds the referee logs a `console.warn` whenever a computer shot is rejected so the fallback is visible.
+- **Verification:** Reducer tests for repeated, out-of-bounds, and missing AI shots; rng tests for `() => 1` and `() => NaN`; component tests that render `<App rng={() => 1} />` and `<App rng={() => NaN} />` and check that "AI is thinking..." clears after the delay. `npm test`.
+
 ## Verification summary
 
 - `npm run typecheck` — passed.
