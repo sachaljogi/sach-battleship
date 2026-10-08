@@ -13,6 +13,13 @@ describe('UI messages', () => {
       shipId: 'battleship',
       conflictingShipId: 'carrier',
     })).toBe('Battleship would overlap your Carrier.')
+    expect(placementErrorMessage({ reason: 'already-placed', shipId: 'carrier' }))
+      .toBe('Carrier is already placed and locked. Choose Start over to change your fleet.')
+
+    const placed = gameReducer(createInitialState(), { type: 'placeShip', coord: { row: 0, col: 0 } })
+    const locked = gameReducer(placed, { type: 'selectShip', shipId: 'carrier' })
+    expect(liveMessageForState(locked))
+      .toBe('Carrier is already placed and locked. Choose Start over to change your fleet.')
 
     const error = gameReducer(createInitialState(), { type: 'placeShip', coord: { row: 9, col: 9 } })
     expect(liveMessageForState(error)).toBe('Carrier would extend off the board.')
