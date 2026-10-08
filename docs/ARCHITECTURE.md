@@ -4,7 +4,7 @@ Behind the screen, a rules engine—the referee—decides which moves are allowe
 
 ## The four parts of a game
 
-1. **Set up the fleet.** Place all five ships yourself or let the game arrange them. Play cannot start until every ship is placed.
+1. **Set up the fleet.** Place all five ships yourself or let the game arrange them. Play cannot start until every ship is placed. A ship is locked the moment it is placed: its entry in the fleet list is greyed out, and the referee refuses any attempt to move it. “Randomize” only works while the board is still empty. To rearrange ships you press “Start over”, which the referee treats as a new game (the game number changes), so nothing from the half-finished setup carries over.
 2. **Your turn.** Choose a square on the enemy board that has not been fired on before. A hit and a miss both use up your turn.
 3. **The computer's turn.** After a short pause of about 0.6 seconds, the computer fires at one untried square on your board.
 4. **Game over.** Play stops as soon as either fleet is sunk. The winner is announced and the enemy's remaining ships are shown. “Play again” starts a fresh setup.

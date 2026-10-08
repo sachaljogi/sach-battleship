@@ -67,6 +67,7 @@ GitHub Actions runs typecheck, lint, unit tests, build, and a Chromium smoke tes
 ## Known limitations
 
 - Games are not saved; refreshing the page returns to fleet setup.
+- During setup, a ship stays where you put it. Once any ship is placed, Randomize is switched off and the only way to rearrange the fleet is "Start over", which begins a brand-new game.
 - The game is single-player against the AI; there is no online multiplayer.
 - The AI uses a hunt-and-target heuristic, not probability-density search.
 - Board cells remain at least 24px wide; at very narrow widths they may be about 24–25px and the board can scroll within its own container.
