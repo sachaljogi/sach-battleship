@@ -7,7 +7,7 @@ import App from '../../App'
 import { AI_DELAY_MS } from '../../hooks/useGame'
 import { allCoords, coordKey, formatCoord } from '../../game/coordinates'
 import { randomFleet, shipCells } from '../../game/placement'
-import { createRng } from '../../game/rng'
+import { createRng, type Rng } from '../../game/rng'
 import type { Coord, PlacedShip } from '../../game/types'
 
 const DEFAULT_SEED = 7281
@@ -21,6 +21,12 @@ function enemyFleetForSeed(seed: number): PlacedShip[] {
 function renderApp(seed = DEFAULT_SEED, strict = false) {
   const app = <App rng={createRng(seed)} />
   return render(strict ? <StrictMode>{app}</StrictMode> : app)
+}
+
+async function startGameWithRng(user: ReturnType<typeof setupUser>, rng: Rng) {
+  render(<App rng={rng} />)
+  await user.click(screen.getByRole('button', { name: 'Randomize' }))
+  await user.click(screen.getByRole('button', { name: 'Start game' }))
 }
 
 function setupUser() {
@@ -212,6 +218,27 @@ describe('Battleship screens', () => {
     await advanceAI(5000)
     expect(boardSnapshot(playerGrid)).toBe(aiBoardBefore)
     expect(countShots(enemyGrid)).toBe(1)
+  })
+
+  it.each([
+    ['() => 1', () => 1],
+    ['() => NaN', () => Number.NaN],
+  ])('clears "AI is thinking..." with the degenerate rng %s', async (_label, rng) => {
+    const user = setupUser()
+    await startGameWithRng(user, rng)
+    const playerGrid = screen.getByRole('grid', { name: 'Your fleet' })
+
+    await user.click(enemyCell({ row: 0, col: 0 }))
+    expect(screen.getByRole('status')).toHaveTextContent('AI is thinking...')
+    await advanceAI()
+    expect(screen.queryByText('AI is thinking...')).not.toBeInTheDocument()
+    expect(countShots(playerGrid)).toBe(1)
+    expect(vi.getTimerCount()).toBe(0)
+
+    await user.click(enemyCell({ row: 0, col: 1 }))
+    await advanceAI()
+    expect(screen.queryByText('AI is thinking...')).not.toBeInTheDocument()
+    expect(countShots(playerGrid)).toBe(2)
   })
 
   it('does not let the AI reply to a winning player shot', async () => {
