@@ -8,6 +8,8 @@ A browser Battleship game for one human player against an AI opponent.
 
 Place all five ships on your 10×10 fleet board. Ships may touch, but cannot overlap or extend beyond the board. Then take turns firing one shot at a time: a hit does not grant an extra turn. Sink all five enemy ships before the AI sinks yours.
 
+While you set up, the game tells you what just happened: each placed ship is confirmed (for example "Carrier placed at A1. Next: Battleship."), and a placement that does not fit names the square you chose. Once all five ships are on the board, the board stops accepting clicks and the message changes to "All ships are placed. Press Start game to begin." To move a ship, pick it again from the fleet list and choose a new square.
+
 ## Requirements
 
 - Node.js 24, as selected by `.nvmrc`

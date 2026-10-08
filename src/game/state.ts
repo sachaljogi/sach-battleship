@@ -8,10 +8,15 @@ export type Phase = 'setup' | 'playerTurn' | 'aiTurn' | 'gameOver'
 export type Side = 'player' | 'ai'
 
 export interface PlacementError {
-  reason: 'out-of-bounds' | 'overlap' | 'no-ship-selected'
+  reason: 'out-of-bounds' | 'overlap' | 'no-ship-selected' | 'fleet-complete'
   shipId?: ShipId
   conflictingShipId?: ShipId
   coord?: Coord
+}
+
+export interface LastPlacement {
+  shipId: ShipId
+  coord: Coord
 }
 
 export interface GameState {
@@ -23,6 +28,7 @@ export interface GameState {
     selectedShipId: ShipId | null
     orientation: Orientation
     error: PlacementError | null
+    lastPlacement: LastPlacement | null
   }
   playerBoard: Board
   enemyBoard: Board
@@ -60,6 +66,7 @@ export function createInitialState(matchId = 1): GameState {
       selectedShipId: FLEET[0]!.id,
       orientation: 'horizontal',
       error: null,
+      lastPlacement: null,
     },
     playerBoard: { ships: [], shots: [] },
     enemyBoard: { ships: [], shots: [] },
@@ -67,7 +74,16 @@ export function createInitialState(matchId = 1): GameState {
   }
 }
 
-const clearError = (state: GameState): GameState['setup'] => ({ ...state.setup, error: null })
+const clearError = (state: GameState): GameState['setup'] => ({
+  ...state.setup,
+  error: null,
+  lastPlacement: null,
+})
+
+const withError = (state: GameState, error: PlacementError): GameState => ({
+  ...state,
+  setup: { ...clearError(state), error },
+})
 
 export function gameReducer(state: GameState, action: Action): GameState {
   switch (action.type) {
@@ -89,10 +105,8 @@ export function gameReducer(state: GameState, action: Action): GameState {
       if (state.phase !== 'setup') return state
       const shipId = state.setup.selectedShipId
       if (!shipId) {
-        return {
-          ...state,
-          setup: { ...state.setup, error: { reason: 'no-ship-selected', coord: action.coord } },
-        }
+        const reason = isCompleteValidFleet(state.setup.ships) ? 'fleet-complete' : 'no-ship-selected'
+        return withError(state, { reason, coord: { ...action.coord } })
       }
       const result = placeShip(state.setup.ships, {
         id: shipId,
@@ -100,23 +114,22 @@ export function gameReducer(state: GameState, action: Action): GameState {
         orientation: state.setup.orientation,
       })
       if (!result.ok) {
-        return {
-          ...state,
-          setup: {
-            ...state.setup,
-            error: {
-              reason: result.reason,
-              shipId,
-              ...(result.conflictingShipId ? { conflictingShipId: result.conflictingShipId } : {}),
-              coord: { ...action.coord },
-            },
-          },
-        }
+        return withError(state, {
+          reason: result.reason,
+          shipId,
+          ...(result.conflictingShipId ? { conflictingShipId: result.conflictingShipId } : {}),
+          coord: { ...action.coord },
+        })
       }
       const nextShipId = FLEET.find((spec) => !result.ships.some((ship) => ship.id === spec.id))?.id ?? null
       return {
         ...state,
-        setup: { ...clearError(state), ships: result.ships, selectedShipId: nextShipId },
+        setup: {
+          ...clearError(state),
+          ships: result.ships,
+          selectedShipId: nextShipId,
+          lastPlacement: { shipId, coord: { ...action.coord } },
+        },
       }
     }
     case 'randomizeFleet': {
