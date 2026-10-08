@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { COLUMN_LABELS, coordKey, formatCoord } from '../game/coordinates'
 import type { Coord } from '../game/types'
@@ -33,15 +33,37 @@ export default function Board<Cell extends CellView | PlayerCellView>({
   const [activeCoord, setActiveCoord] = useState<Coord>({ row: 0, col: 0 })
   const [focusedCoord, setFocusedCoord] = useState<Coord | null>(null)
   const [hoveredCoord, setHoveredCoord] = useState<Coord | null>(null)
+  // True only while focus was reached by keyboard (Tab or arrow keys), never by a pointer click.
+  const [keyboardFocus, setKeyboardFocus] = useState(false)
+  const pointerDownRef = useRef(false)
   const cellRefs = useRef(new Map<string, HTMLButtonElement>())
   const previews = new Map(previewCells.map((preview) => [coordKey(preview.coord), preview.valid]))
+
+  // The preview anchor is derived here, in one place, so no handler can restore a stale value.
+  const previewAnchor = useMemo(
+    () => hoveredCoord ?? (keyboardFocus ? focusedCoord : null),
+    [hoveredCoord, keyboardFocus, focusedCoord],
+  )
+  useEffect(() => {
+    onPreview?.(previewAnchor)
+  }, [onPreview, previewAnchor])
 
   function moveFocus(coord: Coord) {
     setActiveCoord(coord)
     cellRefs.current.get(coordKey(coord))?.focus()
   }
 
+  function activate(coord: Coord) {
+    if (!canActivate(coord)) return
+    // Hide the preview until the next real hover or keyboard move so the result of the
+    // activation is not immediately covered by a preview anchored to the same cell.
+    setHoveredCoord(null)
+    setKeyboardFocus(false)
+    onActivate(coord)
+  }
+
   function onCellKeyDown(event: KeyboardEvent<HTMLButtonElement>, coord: Coord) {
+    setKeyboardFocus(true)
     let next: Coord
     if (event.key === 'ArrowUp') next = { ...coord, row: Math.max(0, coord.row - 1) }
     else if (event.key === 'ArrowDown') next = { ...coord, row: Math.min(cells.length - 1, coord.row + 1) }
@@ -89,27 +111,26 @@ export default function Board<Cell extends CellView | PlayerCellView>({
                     `state-${cell.state}`,
                     preview === undefined ? '' : `preview-${preview ? 'valid' : 'invalid'}`,
                   ].filter(Boolean).join(' ')}
+                  onPointerDown={() => {
+                    pointerDownRef.current = true
+                  }}
                   onClick={() => {
-                    if (canFire) onActivate(coord)
+                    pointerDownRef.current = false
+                    activate(coord)
                   }}
                   onKeyDown={(event) => onCellKeyDown(event, coord)}
                   onFocus={() => {
                     setActiveCoord(coord)
                     setFocusedCoord(coord)
-                    onPreview?.(hoveredCoord ?? coord)
+                    setKeyboardFocus(!pointerDownRef.current)
                   }}
                   onBlur={() => {
                     setFocusedCoord(null)
-                    onPreview?.(hoveredCoord)
+                    setKeyboardFocus(false)
                   }}
-                  onMouseEnter={() => {
-                    setHoveredCoord(coord)
-                    onPreview?.(coord)
-                  }}
-                  onMouseLeave={() => {
-                    setHoveredCoord(null)
-                    onPreview?.(focusedCoord)
-                  }}
+                  onMouseEnter={() => setHoveredCoord(coord)}
+                  onMouseMove={() => setHoveredCoord((current) => current ?? coord)}
+                  onMouseLeave={() => setHoveredCoord(null)}
                 >
                   <span aria-hidden="true">{preview === undefined ? symbolFor(cell) : preview ? '✓' : '✕'}</span>
                   <span className="visually-hidden">{formatCoord(coord)}</span>
