@@ -349,3 +349,10 @@ h1 {
   color: #7a5200;
   font-weight: 700;
 }
+
+.forfeit-message {
+  padding: 0.5rem 0.75rem;
+  border-left: 4px solid #b23811;
+  background: #fff1ec;
+  font-weight: 600;
+}

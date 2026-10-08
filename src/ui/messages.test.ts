@@ -4,9 +4,11 @@ import { createRng } from '../game/rng'
 import { gameReducer, createInitialState } from '../game/state'
 import type { Rewards } from '../game/rewards'
 import {
+  abandonWarningMessage,
   coinTotalMessage,
   describeEnemyCell,
   describePlayerCell,
+  forfeitMessage,
   liveMessageForState,
   placementErrorMessage,
   rewardMessage,
@@ -14,13 +16,15 @@ import {
   seriesScoreMessage,
 } from './messages'
 
-function rewards(overrides: Partial<Rewards> = {}): Rewards {
+type SeriesOverride = Partial<Omit<Rewards, 'series'>> & { series?: Partial<Rewards['series']> }
+
+function rewards(overrides: SeriesOverride = {}): Rewards {
   return {
     coins: 0,
-    series: { id: 1, playerWins: 0, aiWins: 0, winner: null },
     history: [],
-    lastAward: 0,
+    lastGame: null,
     ...overrides,
+    series: { id: 1, playerWins: 0, aiWins: 0, winner: null, games: [], ...overrides.series },
   }
 }
 
@@ -82,7 +86,7 @@ describe('UI messages', () => {
 
     const midSeries = {
       ...setup,
-      rewards: rewards({ coins: 1, series: { id: 1, playerWins: 1, aiWins: 1, winner: null } }),
+      rewards: rewards({ coins: 1, series: { playerWins: 1, aiWins: 1 } }),
     }
     expect(coinTotalMessage(midSeries)).toBe('Gold coins: 1')
     expect(seriesScoreMessage(midSeries)).toBe('Series: You 1 – AI 1, game 3 of 3')
@@ -94,7 +98,11 @@ describe('UI messages', () => {
       ...base,
       phase: 'gameOver' as const,
       winner: 'player' as const,
-      rewards: rewards({ coins: 1, lastAward: 1, series: { id: 1, playerWins: 1, aiWins: 0, winner: null } }),
+      rewards: rewards({
+        coins: 1,
+        lastGame: { winner: 'player', forfeit: false, coinsEarned: 1 },
+        series: { playerWins: 1 },
+      }),
     }
     expect(rewardMessage(gameWon)).toBe('You earned 1 gold coin. Total: 1.')
     expect(seriesScoreMessage(gameWon)).toBe('Series: You 1 – AI 0 after game 1 of 3')
@@ -104,7 +112,11 @@ describe('UI messages', () => {
 
     const seriesWon = {
       ...gameWon,
-      rewards: rewards({ coins: 5, lastAward: 4, series: { id: 1, playerWins: 2, aiWins: 0, winner: 'player' } }),
+      rewards: rewards({
+        coins: 5,
+        lastGame: { winner: 'player', forfeit: false, coinsEarned: 4 },
+        series: { playerWins: 2, winner: 'player' },
+      }),
     }
     expect(rewardMessage(seriesWon)).toBe('You earned 4 gold coins (1 for the win plus a series bonus). Total: 5.')
     expect(seriesResultMessage(seriesWon)).toBe('You won the best-of-3 series 2–0!')
@@ -115,11 +127,45 @@ describe('UI messages', () => {
       ...base,
       phase: 'gameOver' as const,
       winner: 'ai' as const,
-      rewards: rewards({ coins: 1, lastAward: 0, series: { id: 1, playerWins: 1, aiWins: 2, winner: 'ai' } }),
+      rewards: rewards({
+        coins: 1,
+        lastGame: { winner: 'ai', forfeit: false, coinsEarned: 0 },
+        series: { playerWins: 1, aiWins: 2, winner: 'ai' },
+      }),
     }
     expect(rewardMessage(seriesLost)).toBeNull()
     expect(seriesResultMessage(seriesLost)).toBe('The AI won the best-of-3 series 1–2.')
     expect(liveMessageForState(seriesLost)).toBe('The AI wins. The AI won the best-of-3 series 1–2.')
     expect(liveMessageForState(seriesLost)).not.toContain('earned')
+  })
+
+  it('warns before abandoning a game and announces a forfeit during setup', () => {
+    const playing = { ...createInitialState(), phase: 'playerTurn' as const }
+    expect(abandonWarningMessage(playing)).toBe('Abandon this game? It counts as a loss in the series.')
+    expect(abandonWarningMessage({ ...playing, rewards: rewards({ series: { aiWins: 1 } }) }))
+      .toBe('Abandon this game? It counts as a loss, and the AI will win the series.')
+
+    const forfeit = { winner: 'ai', forfeit: true, coinsEarned: 0 } as const
+    const afterForfeit = {
+      ...createInitialState(),
+      rewards: rewards({ lastGame: forfeit, series: { playerWins: 1, aiWins: 1, games: [forfeit] } }),
+    }
+    expect(forfeitMessage(afterForfeit))
+      .toBe('You abandoned the last game, so it counted as a loss. Series: You 1 – AI 1. Next up: game 3 of 3.')
+    expect(liveMessageForState(afterForfeit)).toBe(`${forfeitMessage(afterForfeit)} Set up your fleet.`)
+
+    const seriesDecided = {
+      ...createInitialState(),
+      rewards: rewards({
+        lastGame: forfeit,
+        series: { id: 2 },
+        history: [{ id: 1, playerWins: 0, aiWins: 2, winner: 'ai', coinsEarned: 0, games: [forfeit, forfeit] }],
+      }),
+    }
+    expect(forfeitMessage(seriesDecided)).toBe(
+      'You abandoned the last game, so it counted as a loss. The AI won the best-of-3 series 0–2. A new series starts now.',
+    )
+    expect(forfeitMessage({ ...afterForfeit, phase: 'playerTurn' })).toBeNull()
+    expect(forfeitMessage(createInitialState())).toBeNull()
   })
 })

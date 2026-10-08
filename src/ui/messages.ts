@@ -1,5 +1,5 @@
 import { formatCoord } from '../game/coordinates'
-import { currentGameNumber, gamesPlayed, SERIES_MAX_GAMES } from '../game/rewards'
+import { currentGameNumber, forfeitWouldDecideSeries, gamesPlayed, SERIES_MAX_GAMES } from '../game/rewards'
 import { lastShot } from '../game/state'
 import type { GameState, PlacementError } from '../game/state'
 import type { CellView, PlayerCellView } from '../game/state'
@@ -83,14 +83,34 @@ export function seriesResultMessage(state: GameState): string | null {
 }
 
 export function rewardMessage(state: GameState): string | null {
-  if (state.phase !== 'gameOver' || state.rewards.lastAward <= 0) return null
-  const { lastAward, coins, series } = state.rewards
+  const { lastGame, coins, series } = state.rewards
+  if (state.phase !== 'gameOver' || !lastGame || lastGame.coinsEarned <= 0) return null
   const detail = series.winner === 'player' ? ' (1 for the win plus a series bonus)' : ''
-  return `You earned ${coinsText(lastAward)}${detail}. Total: ${coins}.`
+  return `You earned ${coinsText(lastGame.coinsEarned)}${detail}. Total: ${coins}.`
+}
+
+export function abandonWarningMessage(state: GameState): string {
+  return forfeitWouldDecideSeries(state.rewards)
+    ? 'Abandon this game? It counts as a loss, and the AI will win the series.'
+    : 'Abandon this game? It counts as a loss in the series.'
+}
+
+export function forfeitMessage(state: GameState): string | null {
+  const { lastGame, series, history } = state.rewards
+  if (state.phase !== 'setup' || !lastGame?.forfeit) return null
+  const intro = 'You abandoned the last game, so it counted as a loss.'
+  const decided = history.at(-1)
+  if (gamesPlayed(series) === 0 && decided) {
+    return `${intro} The AI won the best-of-${SERIES_MAX_GAMES} series ${decided.playerWins}–${decided.aiWins}. A new series starts now.`
+  }
+  return `${intro} Series: You ${series.playerWins} – AI ${series.aiWins}. Next up: game ${currentGameNumber(series)} of ${SERIES_MAX_GAMES}.`
 }
 
 export function liveMessageForState(state: GameState): string {
-  if (state.phase === 'setup') return placementErrorMessage(state.setup.error) ?? 'Set up your fleet.'
+  if (state.phase === 'setup') {
+    return placementErrorMessage(state.setup.error)
+      ?? [forfeitMessage(state), 'Set up your fleet.'].filter(Boolean).join(' ')
+  }
   const playerShot = latestPlayerShotMessage(state)
   const aiShot = latestAiShotMessage(state)
   if (state.phase === 'aiTurn') {

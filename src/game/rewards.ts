@@ -5,11 +5,18 @@ export const SERIES_WIN_BONUS = 3
 export const SERIES_WINS_NEEDED = 2
 export const SERIES_MAX_GAMES = SERIES_WINS_NEEDED * 2 - 1
 
+export interface GameRecord {
+  winner: Side
+  forfeit: boolean
+  coinsEarned: number
+}
+
 export interface SeriesState {
   id: number
   playerWins: number
   aiWins: number
   winner: Side | null
+  games: GameRecord[]
 }
 
 export interface SeriesRecord {
@@ -18,21 +25,22 @@ export interface SeriesRecord {
   aiWins: number
   winner: Side
   coinsEarned: number
+  games: GameRecord[]
 }
 
 export interface Rewards {
   coins: number
   series: SeriesState
   history: SeriesRecord[]
-  lastAward: number
+  lastGame: GameRecord | null
 }
 
 export function createSeries(id: number): SeriesState {
-  return { id, playerWins: 0, aiWins: 0, winner: null }
+  return { id, playerWins: 0, aiWins: 0, winner: null, games: [] }
 }
 
 export function createInitialRewards(): Rewards {
-  return { coins: 0, series: createSeries(1), history: [], lastAward: 0 }
+  return { coins: 0, series: createSeries(1), history: [], lastGame: null }
 }
 
 export function gamesPlayed(series: SeriesState): number {
@@ -43,7 +51,7 @@ export function currentGameNumber(series: SeriesState): number {
   return Math.min(gamesPlayed(series) + 1, SERIES_MAX_GAMES)
 }
 
-export function recordGameResult(rewards: Rewards, winner: Side): Rewards {
+export function recordGameResult(rewards: Rewards, winner: Side, forfeit = false): Rewards {
   if (rewards.series.winner) return rewards
   const playerWins = rewards.series.playerWins + (winner === 'player' ? 1 : 0)
   const aiWins = rewards.series.aiWins + (winner === 'ai' ? 1 : 0)
@@ -52,7 +60,14 @@ export function recordGameResult(rewards: Rewards, winner: Side): Rewards {
     : aiWins >= SERIES_WINS_NEEDED ? 'ai' : null
   const award = (winner === 'player' ? COINS_PER_GAME_WIN : 0)
     + (seriesWinner === 'player' ? SERIES_WIN_BONUS : 0)
-  const series: SeriesState = { ...rewards.series, playerWins, aiWins, winner: seriesWinner }
+  const game: GameRecord = { winner, forfeit, coinsEarned: award }
+  const series: SeriesState = {
+    ...rewards.series,
+    playerWins,
+    aiWins,
+    winner: seriesWinner,
+    games: [...rewards.series.games, game],
+  }
   return {
     coins: rewards.coins + award,
     series,
@@ -62,16 +77,26 @@ export function recordGameResult(rewards: Rewards, winner: Side): Rewards {
         playerWins,
         aiWins,
         winner: seriesWinner,
-        coinsEarned: playerWins * COINS_PER_GAME_WIN + (seriesWinner === 'player' ? SERIES_WIN_BONUS : 0),
+        coinsEarned: series.games.reduce((sum, played) => sum + played.coinsEarned, 0),
+        games: series.games,
       }]
       : rewards.history,
-    lastAward: award,
+    lastGame: game,
   }
 }
 
 export function rewardsForNextGame(rewards: Rewards): Rewards {
   if (rewards.series.winner) {
-    return { ...rewards, series: createSeries(rewards.series.id + 1), lastAward: 0 }
+    return { ...rewards, series: createSeries(rewards.series.id + 1), lastGame: null }
   }
-  return rewards.lastAward === 0 ? rewards : { ...rewards, lastAward: 0 }
+  return rewards.lastGame === null ? rewards : { ...rewards, lastGame: null }
+}
+
+export function rewardsAfterForfeit(rewards: Rewards): Rewards {
+  const recorded = recordGameResult(rewards, 'ai', true)
+  return { ...rewardsForNextGame(recorded), lastGame: recorded.lastGame }
+}
+
+export function forfeitWouldDecideSeries(rewards: Rewards): boolean {
+  return rewards.series.aiWins + 1 >= SERIES_WINS_NEEDED
 }

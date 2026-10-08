@@ -8,7 +8,7 @@ import type { Coord, PlacedShip, ShipSpec } from '../game/types'
 import { playerCellViews, type GameState } from '../game/state'
 import type { PreviewCell } from './Board'
 import type { GameActions } from '../hooks/useGame'
-import { describePlayerCell, placementErrorMessage, symbolForCell } from '../ui/messages'
+import { describePlayerCell, forfeitMessage, placementErrorMessage, symbolForCell } from '../ui/messages'
 
 interface SetupScreenProps {
   state: GameState
@@ -47,10 +47,12 @@ export default function SetupScreen({ state, actions }: SetupScreenProps) {
     : []
   const complete = isCompleteValidFleet(state.setup.ships)
   const errorMessage = placementErrorMessage(state.setup.error)
+  const forfeitNotice = forfeitMessage(state)
 
   return (
     <section className="setup-screen" aria-labelledby="setup-heading">
       <h1 id="setup-heading">Battleship</h1>
+      {forfeitNotice && <p className="forfeit-message">{forfeitNotice}</p>}
       <p>Sink all five enemy ships before the AI sinks yours.</p>
       <ul className="rules-list">
         <li>Place all five ships horizontally or vertically; ships may touch.</li>

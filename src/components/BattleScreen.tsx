@@ -2,7 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import Board from './Board'
 import Legend from './Legend'
 import StatusPanel from './StatusPanel'
-import { describeEnemyCell, describePlayerCell, rewardMessage, seriesResultMessage, symbolForCell } from '../ui/messages'
+import {
+  abandonWarningMessage,
+  describeEnemyCell,
+  describePlayerCell,
+  rewardMessage,
+  seriesResultMessage,
+  symbolForCell,
+} from '../ui/messages'
 import { enemyCellViews, playerCellViews, type GameState } from '../game/state'
 import type { Coord } from '../game/types'
 import type { GameActions } from '../hooks/useGame'
@@ -44,7 +51,7 @@ export default function BattleScreen({ state, actions }: BattleScreenProps) {
             ? <button type="button" onClick={() => setConfirmingNewGame(true)}>New game</button>
             : (
               <div className="confirmation">
-                <p>Abandon this game?</p>
+                <p>{abandonWarningMessage(state)}</p>
                 <button type="button" onClick={() => {
                   setConfirmingNewGame(false)
                   actions.newGame()

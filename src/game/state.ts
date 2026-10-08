@@ -1,7 +1,13 @@
 import { allCoords, BOARD_SIZE, coordKey, sameCoord } from './coordinates'
 import type { AiView } from './ai'
 import { isCompleteValidFleet, placeShip, shipCells } from './placement'
-import { createInitialRewards, recordGameResult, rewardsForNextGame, type Rewards } from './rewards'
+import {
+  createInitialRewards,
+  recordGameResult,
+  rewardsAfterForfeit,
+  rewardsForNextGame,
+  type Rewards,
+} from './rewards'
 import { fireAt, isFleetSunk, remainingShips, sunkShipIds } from './shots'
 import { FLEET, type Board, type Coord, type Orientation, type PlacedShip, type ShipId, type Shot } from './types'
 
@@ -155,6 +161,7 @@ export function gameReducer(state: GameState, action: Action): GameState {
           shots: [],
         },
         winner: null,
+        rewards: state.rewards.lastGame ? { ...state.rewards, lastGame: null } : state.rewards,
       }
     }
     case 'playerFire': {
@@ -192,7 +199,10 @@ export function gameReducer(state: GameState, action: Action): GameState {
         ? createInitialState(state.matchId + 1, rewardsForNextGame(state.rewards))
         : state
     case 'newGame':
-      if (state.phase !== 'playerTurn' && state.phase !== 'aiTurn' && state.phase !== 'gameOver') return state
+      if (state.phase === 'playerTurn' || state.phase === 'aiTurn') {
+        return createInitialState(state.matchId + 1, rewardsAfterForfeit(state.rewards))
+      }
+      if (state.phase !== 'gameOver') return state
       return createInitialState(state.matchId + 1, rewardsForNextGame(state.rewards))
     default:
       return state

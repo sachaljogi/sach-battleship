@@ -16,9 +16,11 @@ Games are grouped into short series: the first side to win two games wins the se
 - Winning a series earns a **bonus of 3 gold coins** on top of the coins for the games.
 - Losing a game or a series costs nothing; the coins you already have stay with you.
 
-After each game the result screen tells you how many coins you earned and where the series stands. "Play again" continues the current series, or starts a new series once the previous one has been decided. Starting a "New game" in the middle of a match abandons that game without counting it; the series carries on from the same point.
+After each game the result screen tells you how many coins you earned and where the series stands. "Play again" continues the current series, or starts a new series once the previous one has been decided.
 
-Coins and the series score are saved in your browser (local storage), so they survive a page refresh and a closed tab on the same device and browser. They are not shared between devices, and clearing the browser's site data resets them.
+Abandoning a match counts as a loss: if you confirm "New game" while a game is in progress, the AI is given that game in the series (and wins the series if that makes two), and you earn no coins for it. The confirmation prompt warns you first, and the setup screen explains where the series stands afterwards.
+
+Coins and the series score are kept for the current browser tab (session storage), so they survive a page refresh but reset when the tab is closed, matching the session leaderboard.
 
 ## Requirements
 
@@ -78,7 +80,7 @@ GitHub Actions runs typecheck, lint, unit tests, build, and a Chromium smoke tes
 
 ## Known limitations
 
-- A game in progress is not saved; refreshing the page returns to fleet setup. Gold coins and the series score are kept.
+- A game in progress is not saved; refreshing the page returns to fleet setup. Gold coins and the series score are kept until the tab is closed.
 - The game is single-player against the AI; there is no online multiplayer.
 - The AI uses a hunt-and-target heuristic, not probability-density search.
 - Board cells remain at least 24px wide; at very narrow widths they may be about 24–25px and the board can scroll within its own container.
