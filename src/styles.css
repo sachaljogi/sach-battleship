@@ -237,6 +237,30 @@ h1 {
   font-weight: 800;
 }
 
+.move-timer {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.move-timer-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.4rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 0.4rem;
+  background: #1f4e79;
+  color: #fff;
+  font-size: 1.4rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.move-timer[data-urgent="true"] .move-timer-count {
+  background: #b3261e;
+}
+
 .legend {
   margin: 1rem 0;
 }

@@ -4,13 +4,15 @@ import { act, cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../../App'
-import { AI_DELAY_MS } from '../../hooks/useGame'
+import { AI_MIN_THINK_MS, DEFAULT_TIMERS, MOVE_TIME_MS, type GameTimers } from '../../hooks/useGame'
 import { allCoords, coordKey, formatCoord } from '../../game/coordinates'
 import { randomFleet, shipCells } from '../../game/placement'
 import { createRng } from '../../game/rng'
 import type { Coord, PlacedShip } from '../../game/types'
 
 const DEFAULT_SEED = 7281
+const AI_DELAY_MS = 1500
+const TEST_TIMERS: GameTimers = { ...DEFAULT_TIMERS, aiMinThinkMs: AI_DELAY_MS, aiMaxThinkMs: AI_DELAY_MS }
 
 function enemyFleetForSeed(seed: number): PlacedShip[] {
   const rng = createRng(seed)
@@ -18,8 +20,8 @@ function enemyFleetForSeed(seed: number): PlacedShip[] {
   return randomFleet(rng)
 }
 
-function renderApp(seed = DEFAULT_SEED, strict = false) {
-  const app = <App rng={createRng(seed)} />
+function renderApp(seed = DEFAULT_SEED, strict = false, timers = TEST_TIMERS) {
+  const app = <App rng={createRng(seed)} timers={timers} />
   return render(strict ? <StrictMode>{app}</StrictMode> : app)
 }
 
@@ -27,8 +29,13 @@ function setupUser() {
   return userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
 }
 
-async function startRandomizedGame(user: ReturnType<typeof setupUser>, seed = DEFAULT_SEED, strict = false) {
-  renderApp(seed, strict)
+async function startRandomizedGame(
+  user: ReturnType<typeof setupUser>,
+  seed = DEFAULT_SEED,
+  strict = false,
+  timers = TEST_TIMERS,
+) {
+  renderApp(seed, strict, timers)
   await user.click(screen.getByRole('button', { name: 'Randomize' }))
   await user.click(screen.getByRole('button', { name: 'Start game' }))
   return enemyFleetForSeed(seed)
@@ -39,6 +46,10 @@ function enemyCell(coord: Coord): HTMLElement {
   return within(grid).getByRole('gridcell', {
     name: `Enemy waters, ${formatCoord(coord)}, untried`,
   })
+}
+
+function statusPanel(): HTMLElement {
+  return screen.getByRole('region', { name: 'Game status' })
 }
 
 function countShots(grid: HTMLElement): number {
@@ -148,7 +159,7 @@ describe('Battleship screens', () => {
     await advanceAI(1)
     expect(countShots(playerGrid)).toBe(1)
     const aiBoardBefore = boardSnapshot(playerGrid)
-    await advanceAI(5000)
+    await advanceAI(MOVE_TIME_MS - 1)
     expect(boardSnapshot(playerGrid)).toBe(aiBoardBefore)
     expect(countShots(enemyGrid)).toBe(1)
   })
@@ -199,14 +210,145 @@ describe('Battleship screens', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it('fires exactly one AI shot in Strict Mode', async () => {
+  it('fires exactly one AI shot and one timed-out player shot in Strict Mode', async () => {
     const user = setupUser()
     await startRandomizedGame(user, 94, true)
     const playerGrid = screen.getByRole('grid', { name: 'Your fleet' })
+    const enemyGrid = screen.getByRole('grid', { name: 'Enemy waters' })
     await user.click(enemyCell({ row: 0, col: 0 }))
     await advanceAI()
     expect(countShots(playerGrid)).toBe(1)
-    expect(vi.getTimerCount()).toBe(0)
+    expect(screen.getByRole('timer')).toHaveTextContent('Seconds left to fire5')
+
+    await advanceAI(MOVE_TIME_MS)
+    expect(countShots(enemyGrid)).toBe(2)
+    expect(screen.getByText('AI is thinking...')).toBeInTheDocument()
+    await advanceAI()
+    expect(countShots(playerGrid)).toBe(2)
+    expect(countShots(enemyGrid)).toBe(2)
+  })
+
+  describe('move timer', () => {
+    it('counts down and fires automatically when the player runs out of time', async () => {
+      const user = setupUser()
+      await startRandomizedGame(user)
+      const enemyGrid = screen.getByRole('grid', { name: 'Enemy waters' })
+      const timer = screen.getByRole('timer')
+      expect(timer).toHaveTextContent('Seconds left to fire5')
+      expect(timer).toHaveAttribute('data-urgent', 'false')
+      expect(screen.getByRole('status')).toHaveTextContent('Your turn — fire on Enemy waters')
+
+      await advanceAI(2000)
+      expect(timer).toHaveTextContent('Seconds left to fire3')
+      expect(timer).toHaveAttribute('data-urgent', 'true')
+      expect(screen.getByRole('status')).toHaveTextContent('3 seconds left.')
+      await advanceAI(2000)
+      expect(timer).toHaveTextContent('Seconds left to fire1')
+      expect(screen.getByRole('status')).toHaveTextContent('1 second left.')
+      await advanceAI(999)
+      expect(countShots(enemyGrid)).toBe(0)
+
+      await advanceAI(1)
+      expect(countShots(enemyGrid)).toBe(1)
+      expect(screen.getByText('AI is thinking...')).toBeInTheDocument()
+      expect(within(statusPanel()).getByText(/^Time ran out, so a shot was fired for you at [A-J](?:10|[1-9]):/))
+        .toBeInTheDocument()
+      expect(screen.getByRole('status')).toHaveTextContent('Time ran out, so a shot was fired for you at')
+      expect(screen.getByRole('timer')).toHaveTextContent(`AI fires in${Math.ceil(AI_DELAY_MS / 1000)}`)
+
+      await advanceAI()
+      expect(countShots(screen.getByRole('grid', { name: 'Your fleet' }))).toBe(1)
+      expect(screen.getByRole('timer')).toHaveTextContent('Seconds left to fire5')
+      await user.click(enemyCell({ row: 9, col: 9 }))
+      expect(within(statusPanel()).getByText(/^You fired at J10:/)).toBeInTheDocument()
+    })
+
+    it('does not fire twice when the player fires just before the deadline', async () => {
+      const user = setupUser()
+      await startRandomizedGame(user)
+      const enemyGrid = screen.getByRole('grid', { name: 'Enemy waters' })
+      const playerGrid = screen.getByRole('grid', { name: 'Your fleet' })
+
+      await advanceAI(4900)
+      await user.click(enemyCell({ row: 0, col: 0 }))
+      expect(countShots(enemyGrid)).toBe(1)
+      await advanceAI(200)
+      expect(countShots(enemyGrid)).toBe(1)
+      expect(countShots(playerGrid)).toBe(0)
+      await advanceAI(AI_DELAY_MS - 200)
+      expect(countShots(playerGrid)).toBe(1)
+      expect(countShots(enemyGrid)).toBe(1)
+      expect(within(statusPanel()).getByText(/^You fired at A1:/)).toBeInTheDocument()
+    })
+
+    it('pauses the countdown while the abandon confirmation is open and resumes on Keep playing', async () => {
+      const user = setupUser()
+      await startRandomizedGame(user)
+      const enemyGrid = screen.getByRole('grid', { name: 'Enemy waters' })
+      await advanceAI(2000)
+      expect(screen.getByRole('timer')).toHaveTextContent('Seconds left to fire3')
+
+      await user.click(screen.getByRole('button', { name: 'New game' }))
+      expect(screen.getByRole('timer')).toHaveTextContent('Seconds left to firepaused')
+      expect(vi.getTimerCount()).toBe(0)
+      await advanceAI(MOVE_TIME_MS * 2)
+      expect(countShots(enemyGrid)).toBe(0)
+      expect(screen.getByRole('status')).not.toHaveTextContent('seconds left')
+
+      await user.click(screen.getByRole('button', { name: 'Keep playing' }))
+      expect(screen.getByRole('timer')).toHaveTextContent('Seconds left to fire3')
+      await advanceAI(2999)
+      expect(countShots(enemyGrid)).toBe(0)
+      await advanceAI(1)
+      expect(countShots(enemyGrid)).toBe(1)
+    })
+
+    it('lets the AI reply within the 5 second budget using the default timers', async () => {
+      const user = setupUser()
+      await startRandomizedGame(user, DEFAULT_SEED, false, DEFAULT_TIMERS)
+      const playerGrid = screen.getByRole('grid', { name: 'Your fleet' })
+      await user.click(enemyCell({ row: 0, col: 0 }))
+      expect(screen.getByRole('timer')).toHaveTextContent(/^AI fires in[1-5]$/)
+
+      await advanceAI(AI_MIN_THINK_MS - 1)
+      expect(countShots(playerGrid)).toBe(0)
+      await advanceAI(MOVE_TIME_MS - AI_MIN_THINK_MS + 1)
+      expect(countShots(playerGrid)).toBe(1)
+      expect(screen.getByRole('timer')).toHaveTextContent('Seconds left to fire5')
+    })
+
+    it('clears the player timer on confirmed new game and on unmount', async () => {
+      const user = setupUser()
+      await startRandomizedGame(user)
+      await advanceAI(1000)
+      expect(vi.getTimerCount()).toBeGreaterThan(0)
+      await user.click(screen.getByRole('button', { name: 'New game' }))
+      await user.click(screen.getByRole('button', { name: 'Yes, start over' }))
+      expect(screen.getByRole('button', { name: 'Start game' })).toBeDisabled()
+      expect(screen.queryByRole('timer')).not.toBeInTheDocument()
+      expect(vi.getTimerCount()).toBe(0)
+
+      await user.click(screen.getByRole('button', { name: 'Randomize' }))
+      await user.click(screen.getByRole('button', { name: 'Start game' }))
+      expect(screen.getByRole('timer')).toHaveTextContent('Seconds left to fire5')
+      await advanceAI(MOVE_TIME_MS - 1)
+      expect(countShots(screen.getByRole('grid', { name: 'Enemy waters' }))).toBe(0)
+      cleanup()
+      expect(vi.getTimerCount()).toBe(0)
+    })
+
+    it('stops all timers when the game ends', async () => {
+      const user = setupUser()
+      const enemyFleet = await startRandomizedGame(user, 91)
+      const cells = enemyFleet.flatMap((ship) => shipCells(ship))
+      for (const [index, coord] of cells.entries()) {
+        await user.click(enemyCell(coord))
+        if (index < cells.length - 1) await advanceAI()
+      }
+      expect(screen.getByRole('heading', { name: 'You win!' })).toBeInTheDocument()
+      expect(screen.queryByRole('timer')).not.toBeInTheDocument()
+      expect(vi.getTimerCount()).toBe(0)
+    })
   })
 
   it('keeps hidden enemy data out of the grid until a ship is sunk', async () => {

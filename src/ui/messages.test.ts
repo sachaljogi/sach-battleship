@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { randomFleet } from '../game/placement'
 import { createRng } from '../game/rng'
 import { gameReducer, createInitialState } from '../game/state'
-import { describeEnemyCell, describePlayerCell, liveMessageForState, placementErrorMessage } from './messages'
+import { describeEnemyCell, describePlayerCell, liveMessageForState, placementErrorMessage, timerMessage } from './messages'
 
 describe('UI messages', () => {
   it('describes placement errors without duplicating reducer state', () => {
@@ -52,5 +52,38 @@ describe('UI messages', () => {
 
     const gameOver = { ...playerTurn, phase: 'gameOver' as const, winner: 'player' as const }
     expect(liveMessageForState(gameOver)).toContain('You win!')
+  })
+
+  it('shows the countdown and announces only the last few seconds of the player turn', () => {
+    const rng = createRng(5)
+    const setup = gameReducer(createInitialState(), { type: 'randomizeFleet', ships: randomFleet(rng) })
+    const playerTurn = gameReducer(setup, { type: 'startGame', enemyShips: randomFleet(rng) })
+
+    expect(timerMessage(playerTurn, { secondsLeft: 5, paused: false }))
+      .toEqual({ label: 'Seconds left to fire', value: '5' })
+    expect(timerMessage(playerTurn, { secondsLeft: 2, paused: true }))
+      .toEqual({ label: 'Seconds left to fire', value: 'paused' })
+    expect(timerMessage(playerTurn, { secondsLeft: null, paused: false })).toBeNull()
+    expect(timerMessage(createInitialState(), { secondsLeft: 5, paused: false })).toBeNull()
+
+    expect(liveMessageForState(playerTurn, { secondsLeft: 5, paused: false }))
+      .toBe('Your turn — fire on Enemy waters')
+    expect(liveMessageForState(playerTurn, { secondsLeft: 4, paused: false }))
+      .toBe('Your turn — fire on Enemy waters')
+    expect(liveMessageForState(playerTurn, { secondsLeft: 3, paused: false })).toBe('3 seconds left.')
+    expect(liveMessageForState(playerTurn, { secondsLeft: 1, paused: false })).toBe('1 second left.')
+    expect(liveMessageForState(playerTurn, { secondsLeft: 2, paused: true }))
+      .toBe('Your turn — fire on Enemy waters')
+
+    const timedOut = gameReducer(playerTurn, {
+      type: 'playerTimeout',
+      coord: { row: 0, col: 0 },
+      matchId: playerTurn.matchId,
+      turnId: playerTurn.turnId,
+    })
+    expect(timerMessage(timedOut, { secondsLeft: 3, paused: false })).toEqual({ label: 'AI fires in', value: '3' })
+    expect(liveMessageForState(timedOut, { secondsLeft: 3, paused: false }))
+      .toContain('Time ran out, so a shot was fired for you at A1:')
+    expect(liveMessageForState(timedOut, { secondsLeft: 3, paused: false })).toContain('AI is thinking...')
   })
 })

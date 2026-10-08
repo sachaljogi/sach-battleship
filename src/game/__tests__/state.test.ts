@@ -13,6 +13,7 @@ import {
   playerCellViews,
   remainingShipCount,
   scheduledAiTurn,
+  scheduledPlayerTurn,
   type GameState,
 } from '../state'
 import { isFleetSunk } from '../shots'
@@ -71,6 +72,39 @@ describe('game reducer', () => {
       matchId: aiTurn.matchId,
       turnId: aiTurn.turnId + 1,
     })).toBe(aiTurn)
+  })
+
+  it('applies a timed-out player shot only for the current player turn', () => {
+    const playing = startGame()
+    expect(scheduledPlayerTurn(playing)).toEqual({ matchId: playing.matchId, turnId: 0 })
+    expect(playing.autoFired).toBe(false)
+    const timedOut = gameReducer(playing, {
+      type: 'playerTimeout',
+      coord: { row: 2, col: 3 },
+      matchId: playing.matchId,
+      turnId: playing.turnId,
+    })
+    expect(timedOut.phase).toBe('aiTurn')
+    expect(timedOut.autoFired).toBe(true)
+    expect(timedOut.turnId).toBe(1)
+    expect(lastShot(timedOut.enemyBoard)?.coord).toEqual({ row: 2, col: 3 })
+    expect(scheduledPlayerTurn(timedOut)).toBeNull()
+
+    const stale = { type: 'playerTimeout', coord: { row: 4, col: 4 }, matchId: playing.matchId, turnId: 0 } as const
+    expect(gameReducer(timedOut, stale)).toBe(timedOut)
+    expect(gameReducer(playing, { ...stale, matchId: playing.matchId + 1 })).toBe(playing)
+    expect(gameReducer(playing, { ...stale, turnId: 5 })).toBe(playing)
+    expect(gameReducer(playing, { ...stale, coord: { row: 10, col: 0 } })).toBe(playing)
+
+    const replied = gameReducer(timedOut, {
+      type: 'aiFire',
+      coord: { row: 0, col: 0 },
+      matchId: timedOut.matchId,
+      turnId: timedOut.turnId,
+    })
+    expect(replied.autoFired).toBe(true)
+    const manual = gameReducer(replied, { type: 'playerFire', coord: { row: 5, col: 5 } })
+    expect(manual.autoFired).toBe(false)
   })
 
   it('requires complete valid player and enemy fleets before starting', () => {

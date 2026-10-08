@@ -27,6 +27,7 @@ export interface GameState {
   playerBoard: Board
   enemyBoard: Board
   winner: Side | null
+  autoFired: boolean
 }
 
 export type Action =
@@ -37,6 +38,7 @@ export type Action =
   | { type: 'clearBoard' }
   | { type: 'startGame'; enemyShips: PlacedShip[] }
   | { type: 'playerFire'; coord: Coord }
+  | { type: 'playerTimeout'; coord: Coord; matchId: number; turnId: number }
   | { type: 'aiFire'; coord: Coord; matchId: number; turnId: number }
   | { type: 'playAgain' }
   | { type: 'newGame' }
@@ -64,10 +66,25 @@ export function createInitialState(matchId = 1): GameState {
     playerBoard: { ships: [], shots: [] },
     enemyBoard: { ships: [], shots: [] },
     winner: null,
+    autoFired: false,
   }
 }
 
 const clearError = (state: GameState): GameState['setup'] => ({ ...state.setup, error: null })
+
+function applyPlayerShot(state: GameState, coord: Coord, autoFired: boolean): GameState {
+  const result = fireAt(state.enemyBoard, coord)
+  if (!result.ok) return state
+  const won = isFleetSunk(result.board)
+  return {
+    ...state,
+    turnId: state.turnId + 1,
+    phase: won ? 'gameOver' : 'aiTurn',
+    enemyBoard: result.board,
+    winner: won ? 'player' : null,
+    autoFired,
+  }
+}
 
 export function gameReducer(state: GameState, action: Action): GameState {
   switch (action.type) {
@@ -156,16 +173,13 @@ export function gameReducer(state: GameState, action: Action): GameState {
     }
     case 'playerFire': {
       if (state.phase !== 'playerTurn') return state
-      const result = fireAt(state.enemyBoard, action.coord)
-      if (!result.ok) return state
-      const won = isFleetSunk(result.board)
-      return {
-        ...state,
-        turnId: state.turnId + 1,
-        phase: won ? 'gameOver' : 'aiTurn',
-        enemyBoard: result.board,
-        winner: won ? 'player' : null,
+      return applyPlayerShot(state, action.coord, false)
+    }
+    case 'playerTimeout': {
+      if (state.phase !== 'playerTurn' || action.matchId !== state.matchId || action.turnId !== state.turnId) {
+        return state
       }
+      return applyPlayerShot(state, action.coord, true)
     }
     case 'aiFire': {
       if (state.phase !== 'aiTurn' || action.matchId !== state.matchId || action.turnId !== state.turnId) {
@@ -215,6 +229,10 @@ export function remainingShipCount(board: Board): number {
 
 export function scheduledAiTurn(state: GameState): { matchId: number; turnId: number } | null {
   return state.phase === 'aiTurn' ? { matchId: state.matchId, turnId: state.turnId } : null
+}
+
+export function scheduledPlayerTurn(state: GameState): { matchId: number; turnId: number } | null {
+  return state.phase === 'playerTurn' ? { matchId: state.matchId, turnId: state.turnId } : null
 }
 
 function cellViews(state: GameState, board: Board, revealShips: boolean): CellView[][] {
