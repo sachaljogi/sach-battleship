@@ -8,6 +8,18 @@ A browser Battleship game for one human player against an AI opponent.
 
 Place all five ships on your 10×10 fleet board. Ships may touch, but cannot overlap or extend beyond the board. Then take turns firing one shot at a time: a hit does not grant an extra turn. Sink all five enemy ships before the AI sinks yours.
 
+## Gold coins and best-of-3 series
+
+Games are grouped into short series: the first side to win two games wins the series (at most three games). The yellow bar at the top of the page always shows your gold coin total and the series score, for example "Series: You 1 – AI 1, game 3 of 3".
+
+- Winning a game earns **1 gold coin**.
+- Winning a series earns a **bonus of 3 gold coins** on top of the coins for the games.
+- Losing a game or a series costs nothing; the coins you already have stay with you.
+
+After each game the result screen tells you how many coins you earned and where the series stands. "Play again" continues the current series, or starts a new series once the previous one has been decided. Starting a "New game" in the middle of a match abandons that game without counting it; the series carries on from the same point.
+
+Coins and the series score are saved in your browser (local storage), so they survive a page refresh and a closed tab on the same device and browser. They are not shared between devices, and clearing the browser's site data resets them.
+
 ## Requirements
 
 - Node.js 24, as selected by `.nvmrc`
@@ -66,7 +78,7 @@ GitHub Actions runs typecheck, lint, unit tests, build, and a Chromium smoke tes
 
 ## Known limitations
 
-- Games are not saved; refreshing the page returns to fleet setup.
+- A game in progress is not saved; refreshing the page returns to fleet setup. Gold coins and the series score are kept.
 - The game is single-player against the AI; there is no online multiplayer.
 - The AI uses a hunt-and-target heuristic, not probability-density search.
 - Board cells remain at least 24px wide; at very narrow widths they may be about 24–25px and the board can scroll within its own container.

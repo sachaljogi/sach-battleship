@@ -17,6 +17,7 @@ import {
 } from '../state'
 import { isFleetSunk } from '../shots'
 import type { Board, Coord } from '../types'
+import { COINS_PER_GAME_WIN, SERIES_WIN_BONUS, createInitialRewards } from '../rewards'
 import { fleet, fleetCells, freezeDeep, startGame } from './helpers'
 
 function winningPlayerTurn(state: GameState): { state: GameState; finalCoord: Coord } {
@@ -29,6 +30,117 @@ function winningPlayerTurn(state: GameState): { state: GameState; finalCoord: Co
   expect(isFleetSunk(board)).toBe(false)
   return { state: { ...state, phase: 'playerTurn', enemyBoard: board }, finalCoord }
 }
+
+function losingAiTurn(state: GameState): { state: GameState; finalCoord: Coord } {
+  const cells = fleetCells(state.playerBoard.ships)
+  const finalCoord = cells.at(-1)!
+  const board: Board = {
+    ships: state.playerBoard.ships,
+    shots: cells.slice(0, -1).map((coord) => ({ coord, outcome: 'hit' })),
+  }
+  return { state: { ...state, phase: 'aiTurn', playerBoard: board }, finalCoord }
+}
+
+function finishGame(state: GameState, winner: 'player' | 'ai'): GameState {
+  const playing = startGame(fleet(10), fleet(20))
+  const base: GameState = { ...playing, matchId: state.matchId, rewards: state.rewards }
+  if (winner === 'player') {
+    const prepared = winningPlayerTurn(base)
+    return gameReducer(prepared.state, { type: 'playerFire', coord: prepared.finalCoord })
+  }
+  const prepared = losingAiTurn(base)
+  return gameReducer(prepared.state, {
+    type: 'aiFire',
+    coord: prepared.finalCoord,
+    matchId: prepared.state.matchId,
+    turnId: prepared.state.turnId,
+  })
+}
+
+function playSeries(results: readonly ('player' | 'ai')[]): GameState {
+  return results.reduce<GameState>((state, winner) => {
+    const next = state.phase === 'gameOver' ? gameReducer(state, { type: 'playAgain' }) : state
+    return finishGame(next, winner)
+  }, createInitialState())
+}
+
+describe('gold coins and best-of-3 series', () => {
+  it('starts with no coins and a fresh series', () => {
+    expect(createInitialState().rewards).toEqual(createInitialRewards())
+    expect(createInitialState().rewards.series).toEqual({ id: 1, playerWins: 0, aiWins: 0, winner: null })
+  })
+
+  it('awards one coin per game won and keeps the series open at 1-0', () => {
+    const won = playSeries(['player'])
+    expect(won.phase).toBe('gameOver')
+    expect(won.winner).toBe('player')
+    expect(won.rewards.coins).toBe(COINS_PER_GAME_WIN)
+    expect(won.rewards.lastAward).toBe(COINS_PER_GAME_WIN)
+    expect(won.rewards.series).toEqual({ id: 1, playerWins: 1, aiWins: 0, winner: null })
+    expect(won.rewards.history).toEqual([])
+  })
+
+  it('awards no coins for a lost game but records the AI win', () => {
+    const lost = playSeries(['ai'])
+    expect(lost.winner).toBe('ai')
+    expect(lost.rewards.coins).toBe(0)
+    expect(lost.rewards.lastAward).toBe(0)
+    expect(lost.rewards.series).toEqual({ id: 1, playerWins: 0, aiWins: 1, winner: null })
+  })
+
+  it('wins the series 2-0 with a bonus and records it in history', () => {
+    const state = playSeries(['player', 'player'])
+    expect(state.rewards.series).toEqual({ id: 1, playerWins: 2, aiWins: 0, winner: 'player' })
+    expect(state.rewards.lastAward).toBe(COINS_PER_GAME_WIN + SERIES_WIN_BONUS)
+    expect(state.rewards.coins).toBe(2 * COINS_PER_GAME_WIN + SERIES_WIN_BONUS)
+    expect(state.rewards.history).toEqual([
+      { id: 1, playerWins: 2, aiWins: 0, winner: 'player', coinsEarned: 2 * COINS_PER_GAME_WIN + SERIES_WIN_BONUS },
+    ])
+  })
+
+  it('wins the series 2-1 after dropping a game', () => {
+    const state = playSeries(['player', 'ai', 'player'])
+    expect(state.rewards.series).toEqual({ id: 1, playerWins: 2, aiWins: 1, winner: 'player' })
+    expect(state.rewards.coins).toBe(2 * COINS_PER_GAME_WIN + SERIES_WIN_BONUS)
+    expect(state.rewards.history[0]?.coinsEarned).toBe(2 * COINS_PER_GAME_WIN + SERIES_WIN_BONUS)
+  })
+
+  it('loses the series 1-2, keeps coins already earned, and pays no bonus', () => {
+    const state = playSeries(['ai', 'player', 'ai'])
+    expect(state.rewards.series).toEqual({ id: 1, playerWins: 1, aiWins: 2, winner: 'ai' })
+    expect(state.rewards.coins).toBe(COINS_PER_GAME_WIN)
+    expect(state.rewards.lastAward).toBe(0)
+    expect(state.rewards.history).toEqual([
+      { id: 1, playerWins: 1, aiWins: 2, winner: 'ai', coinsEarned: COINS_PER_GAME_WIN },
+    ])
+  })
+
+  it('continues an open series on playAgain and starts a new one after it is decided', () => {
+    const open = gameReducer(playSeries(['player']), { type: 'playAgain' })
+    expect(open.phase).toBe('setup')
+    expect(open.rewards.series).toEqual({ id: 1, playerWins: 1, aiWins: 0, winner: null })
+    expect(open.rewards.lastAward).toBe(0)
+
+    const decided = playSeries(['ai', 'ai'])
+    const fresh = gameReducer(decided, { type: 'playAgain' })
+    expect(fresh.rewards.series).toEqual({ id: 2, playerWins: 0, aiWins: 0, winner: null })
+    expect(fresh.rewards.coins).toBe(decided.rewards.coins)
+    expect(fresh.rewards.history).toEqual(decided.rewards.history)
+
+    const secondSeries = finishGame(fresh, 'player')
+    expect(secondSeries.rewards.series).toEqual({ id: 2, playerWins: 1, aiWins: 0, winner: null })
+  })
+
+  it('does not change the series when a game is abandoned mid-match', () => {
+    const open = gameReducer(playSeries(['player']), { type: 'playAgain' })
+    const playing = gameReducer(
+      gameReducer(open, { type: 'randomizeFleet', ships: fleet(3) }),
+      { type: 'startGame', enemyShips: fleet(4) },
+    )
+    const abandoned = gameReducer(playing, { type: 'newGame' })
+    expect(abandoned.rewards).toBe(playing.rewards)
+  })
+})
 
 describe('game reducer', () => {
   it('flows setup to playerTurn, aiTurn, and back to playerTurn', () => {
@@ -163,7 +275,7 @@ describe('game reducer', () => {
     const prepared = winningPlayerTurn(playing)
     const gameOver = gameReducer(prepared.state, { type: 'playerFire', coord: prepared.finalCoord })
     expect(gameOver.phase).toBe('gameOver')
-    expect(gameReducer(gameOver, { type: 'newGame' })).toEqual(createInitialState(gameOver.matchId + 1))
+    expect(gameReducer(gameOver, { type: 'newGame' })).toEqual(createInitialState(gameOver.matchId + 1, { ...gameOver.rewards, lastAward: 0 }))
   })
 
   it('restricts playAgain to gameOver and returns a clean setup state', () => {
@@ -178,7 +290,7 @@ describe('game reducer', () => {
     const prepared = winningPlayerTurn(playing)
     const gameOver = gameReducer(prepared.state, { type: 'playerFire', coord: prepared.finalCoord })
     const again = gameReducer(gameOver, { type: 'playAgain' })
-    expect(again).toEqual(createInitialState(gameOver.matchId + 1))
+    expect(again).toEqual(createInitialState(gameOver.matchId + 1, { ...gameOver.rewards, lastAward: 0 }))
     expect(again.phase).toBe('setup')
     expect(again.turnId).toBe(0)
     expect(again.setup.ships).toEqual([])

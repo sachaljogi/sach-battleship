@@ -2,7 +2,27 @@ import { describe, expect, it } from 'vitest'
 import { randomFleet } from '../game/placement'
 import { createRng } from '../game/rng'
 import { gameReducer, createInitialState } from '../game/state'
-import { describeEnemyCell, describePlayerCell, liveMessageForState, placementErrorMessage } from './messages'
+import type { Rewards } from '../game/rewards'
+import {
+  coinTotalMessage,
+  describeEnemyCell,
+  describePlayerCell,
+  liveMessageForState,
+  placementErrorMessage,
+  rewardMessage,
+  seriesResultMessage,
+  seriesScoreMessage,
+} from './messages'
+
+function rewards(overrides: Partial<Rewards> = {}): Rewards {
+  return {
+    coins: 0,
+    series: { id: 1, playerWins: 0, aiWins: 0, winner: null },
+    history: [],
+    lastAward: 0,
+    ...overrides,
+  }
+}
 
 describe('UI messages', () => {
   it('describes placement errors without duplicating reducer state', () => {
@@ -52,5 +72,54 @@ describe('UI messages', () => {
 
     const gameOver = { ...playerTurn, phase: 'gameOver' as const, winner: 'player' as const }
     expect(liveMessageForState(gameOver)).toContain('You win!')
+  })
+
+  it('shows the coin total and series score during setup and play', () => {
+    const setup = createInitialState()
+    expect(coinTotalMessage(setup)).toBe('Gold coins: 0')
+    expect(seriesScoreMessage(setup)).toBe('Series: You 0 – AI 0, game 1 of 3')
+    expect(liveMessageForState(setup)).toBe('Set up your fleet.')
+
+    const midSeries = {
+      ...setup,
+      rewards: rewards({ coins: 1, series: { id: 1, playerWins: 1, aiWins: 1, winner: null } }),
+    }
+    expect(coinTotalMessage(midSeries)).toBe('Gold coins: 1')
+    expect(seriesScoreMessage(midSeries)).toBe('Series: You 1 – AI 1, game 3 of 3')
+  })
+
+  it('announces coin gains and series results at game over', () => {
+    const base = createInitialState()
+    const gameWon = {
+      ...base,
+      phase: 'gameOver' as const,
+      winner: 'player' as const,
+      rewards: rewards({ coins: 1, lastAward: 1, series: { id: 1, playerWins: 1, aiWins: 0, winner: null } }),
+    }
+    expect(rewardMessage(gameWon)).toBe('You earned 1 gold coin. Total: 1.')
+    expect(seriesScoreMessage(gameWon)).toBe('Series: You 1 – AI 0 after game 1 of 3')
+    expect(seriesResultMessage(gameWon)).toBe('Series: You 1 – AI 0. Next up: game 2 of 3.')
+    expect(liveMessageForState(gameWon))
+      .toBe('You win! You earned 1 gold coin. Total: 1. Series: You 1 – AI 0. Next up: game 2 of 3.')
+
+    const seriesWon = {
+      ...gameWon,
+      rewards: rewards({ coins: 5, lastAward: 4, series: { id: 1, playerWins: 2, aiWins: 0, winner: 'player' } }),
+    }
+    expect(rewardMessage(seriesWon)).toBe('You earned 4 gold coins (1 for the win plus a series bonus). Total: 5.')
+    expect(seriesResultMessage(seriesWon)).toBe('You won the best-of-3 series 2–0!')
+    expect(seriesScoreMessage(seriesWon)).toBe('Series won You 2 – AI 0. Play again to start a new series.')
+    expect(liveMessageForState(seriesWon)).toContain('You won the best-of-3 series 2–0!')
+
+    const seriesLost = {
+      ...base,
+      phase: 'gameOver' as const,
+      winner: 'ai' as const,
+      rewards: rewards({ coins: 1, lastAward: 0, series: { id: 1, playerWins: 1, aiWins: 2, winner: 'ai' } }),
+    }
+    expect(rewardMessage(seriesLost)).toBeNull()
+    expect(seriesResultMessage(seriesLost)).toBe('The AI won the best-of-3 series 1–2.')
+    expect(liveMessageForState(seriesLost)).toBe('The AI wins. The AI won the best-of-3 series 1–2.')
+    expect(liveMessageForState(seriesLost)).not.toContain('earned')
   })
 })

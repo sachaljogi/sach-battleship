@@ -69,6 +69,7 @@ async function advanceAI(ms = AI_DELAY_MS) {
 }
 
 beforeEach(() => {
+  localStorage.clear()
   vi.useFakeTimers()
   vi.stubGlobal('jest', vi)
   vi.spyOn(console, 'error').mockImplementation(() => undefined)
@@ -169,6 +170,34 @@ describe('Battleship screens', () => {
     await advanceAI(5000)
     expect(boardSnapshot(playerGrid)).toBe(boardBefore)
     expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('awards gold coins after a win, continues the series, and survives a reload', async () => {
+    const user = setupUser()
+    const enemyFleet = await startRandomizedGame(user, 91)
+    const cells = enemyFleet.flatMap((ship) => shipCells(ship))
+    expect(screen.getByTestId('coin-total')).toHaveTextContent('Gold coins: 0')
+    expect(screen.getByTestId('series-score')).toHaveTextContent('Series: You 0 – AI 0, game 1 of 3')
+
+    for (const [index, coord] of cells.entries()) {
+      await user.click(enemyCell(coord))
+      if (index < cells.length - 1) await advanceAI()
+    }
+
+    expect(screen.getByRole('heading', { name: 'You win!' })).toBeInTheDocument()
+    expect(screen.getByTestId('coin-total')).toHaveTextContent('Gold coins: 1')
+    expect(screen.getByText('You earned 1 gold coin. Total: 1.')).toBeInTheDocument()
+    expect(screen.getByText('Series: You 1 – AI 0. Next up: game 2 of 3.')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('You earned 1 gold coin. Total: 1.')
+
+    await user.click(screen.getByRole('button', { name: 'Play again' }))
+    expect(screen.getByTestId('coin-total')).toHaveTextContent('Gold coins: 1')
+    expect(screen.getByTestId('series-score')).toHaveTextContent('Series: You 1 – AI 0, game 2 of 3')
+
+    cleanup()
+    renderApp()
+    expect(screen.getByTestId('coin-total')).toHaveTextContent('Gold coins: 1')
+    expect(screen.getByTestId('series-score')).toHaveTextContent('Series: You 1 – AI 0, game 2 of 3')
   })
 
   it('cancels a pending AI shot on confirmed new game and starts cleanly', async () => {

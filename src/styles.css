@@ -296,3 +296,56 @@ h1 {
     animation: none !important;
   }
 }
+
+.rewards-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 1rem;
+  padding: 0.6rem 1rem;
+  border: 1px solid #d3a93a;
+  border-radius: 0.5rem;
+  background: #fff8e1;
+}
+
+.rewards-bar p {
+  margin: 0;
+}
+
+.coin-total {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-weight: 800;
+}
+
+.coin-icon {
+  width: 1.1rem;
+  height: 1.1rem;
+  border: 2px solid #b0801a;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ffe9a3, #e0a825 70%);
+}
+
+.series-score {
+  font-weight: 600;
+}
+
+.game-summary {
+  margin: 0.5rem 0 1rem;
+}
+
+.game-summary h2 {
+  margin-bottom: 0.3rem;
+}
+
+.game-summary p {
+  margin: 0.3rem 0;
+}
+
+.reward-message {
+  color: #7a5200;
+  font-weight: 700;
+}

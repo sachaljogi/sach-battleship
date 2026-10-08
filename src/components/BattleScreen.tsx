@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import Board from './Board'
 import Legend from './Legend'
 import StatusPanel from './StatusPanel'
-import { describeEnemyCell, describePlayerCell, symbolForCell } from '../ui/messages'
+import { describeEnemyCell, describePlayerCell, rewardMessage, seriesResultMessage, symbolForCell } from '../ui/messages'
 import { enemyCellViews, playerCellViews, type GameState } from '../game/state'
 import type { Coord } from '../game/types'
 import type { GameActions } from '../hooks/useGame'
@@ -29,7 +29,13 @@ export default function BattleScreen({ state, actions }: BattleScreenProps) {
   return (
     <section className="battle-screen" aria-labelledby="battle-heading">
       <h1 id="battle-heading">Battleship</h1>
-      {gameOver && <h2 className="game-result">{state.winner === 'player' ? 'You win!' : 'The AI wins.'}</h2>}
+      {gameOver && (
+        <div className="game-summary">
+          <h2 className="game-result">{state.winner === 'player' ? 'You win!' : 'The AI wins.'}</h2>
+          {rewardMessage(state) && <p className="reward-message">{rewardMessage(state)}</p>}
+          <p className="series-result">{seriesResultMessage(state)}</p>
+        </div>
+      )}
       <StatusPanel state={state} />
 
       {state.phase !== 'gameOver' && (

@@ -1,4 +1,5 @@
 import { formatCoord } from '../game/coordinates'
+import { currentGameNumber, gamesPlayed, SERIES_MAX_GAMES } from '../game/rewards'
 import { lastShot } from '../game/state'
 import type { GameState, PlacementError } from '../game/state'
 import type { CellView, PlayerCellView } from '../game/state'
@@ -50,6 +51,44 @@ export function turnMessage(state: GameState): string {
   return 'Set up your fleet.'
 }
 
+export function coinsText(count: number): string {
+  return `${count} gold coin${count === 1 ? '' : 's'}`
+}
+
+export function coinTotalMessage(state: GameState): string {
+  return `Gold coins: ${state.rewards.coins}`
+}
+
+export function seriesScoreMessage(state: GameState): string {
+  const { series } = state.rewards
+  const score = `You ${series.playerWins} – AI ${series.aiWins}`
+  if (series.winner) {
+    return series.winner === 'player'
+      ? `Series won ${score}. Play again to start a new series.`
+      : `Series lost ${score}. Play again to start a new series.`
+  }
+  if (state.phase === 'gameOver') {
+    return `Series: ${score} after game ${gamesPlayed(series)} of ${SERIES_MAX_GAMES}`
+  }
+  return `Series: ${score}, game ${currentGameNumber(series)} of ${SERIES_MAX_GAMES}`
+}
+
+export function seriesResultMessage(state: GameState): string | null {
+  if (state.phase !== 'gameOver') return null
+  const { series } = state.rewards
+  const score = `${series.playerWins}–${series.aiWins}`
+  if (series.winner === 'player') return `You won the best-of-${SERIES_MAX_GAMES} series ${score}!`
+  if (series.winner === 'ai') return `The AI won the best-of-${SERIES_MAX_GAMES} series ${score}.`
+  return `Series: You ${series.playerWins} – AI ${series.aiWins}. Next up: game ${currentGameNumber(series)} of ${SERIES_MAX_GAMES}.`
+}
+
+export function rewardMessage(state: GameState): string | null {
+  if (state.phase !== 'gameOver' || state.rewards.lastAward <= 0) return null
+  const { lastAward, coins, series } = state.rewards
+  const detail = series.winner === 'player' ? ' (1 for the win plus a series bonus)' : ''
+  return `You earned ${coinsText(lastAward)}${detail}. Total: ${coins}.`
+}
+
 export function liveMessageForState(state: GameState): string {
   if (state.phase === 'setup') return placementErrorMessage(state.setup.error) ?? 'Set up your fleet.'
   const playerShot = latestPlayerShotMessage(state)
@@ -59,7 +98,7 @@ export function liveMessageForState(state: GameState): string {
   }
   if (state.phase === 'gameOver') {
     const winner = state.winner === 'player' ? 'You win!' : 'The AI wins.'
-    return [winner, playerShot, aiShot].filter(Boolean).join(' ')
+    return [winner, rewardMessage(state), seriesResultMessage(state), playerShot, aiShot].filter(Boolean).join(' ')
   }
   return [aiShot, 'Your turn — fire on Enemy waters'].filter(Boolean).join(' ')
 }

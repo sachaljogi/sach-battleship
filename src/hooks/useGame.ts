@@ -1,6 +1,7 @@
 import { useEffect, useReducer } from 'react'
 import { chooseAiShot } from '../game/ai'
 import { randomFleet } from '../game/placement'
+import type { Rewards } from '../game/rewards'
 import type { Rng } from '../game/rng'
 import {
   aiViewFromBoard,
@@ -10,6 +11,7 @@ import {
   type GameState,
 } from '../game/state'
 import type { Coord, ShipId } from '../game/types'
+import { defaultRewardsStorage, loadRewards, saveRewards } from './rewardsStorage'
 
 export const AI_DELAY_MS = 600
 
@@ -27,10 +29,17 @@ export interface GameActions {
 
 export interface UseGameResult extends GameActions {
   state: GameState
+  rewards: Rewards
 }
 
-export function useGame(rng: Rng): UseGameResult {
-  const [state, dispatch] = useReducer(gameReducer, undefined, () => createInitialState())
+export interface UseGameOptions {
+  storage?: Storage | null
+}
+
+export function useGame(rng: Rng, options: UseGameOptions = {}): UseGameResult {
+  const storage = options.storage === undefined ? defaultRewardsStorage() : options.storage
+  const [state, dispatch] = useReducer(gameReducer, undefined, () => createInitialState(1, loadRewards(storage)))
+  const rewards = state.rewards
   const scheduled = scheduledAiTurn(state)
   const matchId = scheduled?.matchId
   const turnId = scheduled?.turnId
@@ -45,8 +54,13 @@ export function useGame(rng: Rng): UseGameResult {
     return () => clearTimeout(timer)
   }, [matchId, turnId, playerBoard, rng])
 
+  useEffect(() => {
+    saveRewards(storage, rewards)
+  }, [storage, rewards])
+
   return {
     state,
+    rewards,
     selectShip: (shipId: ShipId) => dispatch({ type: 'selectShip', shipId }),
     rotate: () => dispatch({ type: 'rotate' }),
     placeShip: (coord: Coord) => dispatch({ type: 'placeShip', coord }),
